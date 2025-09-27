@@ -1,0 +1,21 @@
+{
+ "name": "@tokenring-ai/reddit",
+ "version": "0.1.0",
+ "description": "Reddit integration for Token Ring",
+ "dependencies": {
+  "@tokenring-ai/ai-client": "0.1.0",
+  "@tokenring-ai/agent": "0.1.0",
+  "zod": "^4.0.17"
+ },
+ "devDependencies": {
+  "vitest": "^3.2.4",
+  "@vitest/coverage-v8": "^3.2.4"
+ },
+ "exports": {
+  ".": "./index.ts",
+  "./*": "./*.ts"
+ },
+ "types": "./index.ts",
+ "license": "MIT",
+ "type": "module"
+}
