@@ -1,4 +1,5 @@
 import {TokenRingService} from "@tokenring-ai/agent/types";
+import {doFetchWithRetry} from "@tokenring-ai/utility/doFetchWithRetry";
 import {HttpService} from "@tokenring-ai/utility/HttpService";
 
 export type RedditConfig = {
@@ -55,7 +56,6 @@ export default class RedditService extends HttpService implements TokenRingServi
     const jsonUrl = postUrl.endsWith('.json') ? postUrl : `${postUrl}.json`;
     
     // For external URLs, we need to use the full URL
-    const {doFetchWithRetry} = await import("@tokenring-ai/utility/doFetchWithRetry");
     const res = await doFetchWithRetry(jsonUrl, {
       method: "GET",
       headers: this.defaultHeaders,
