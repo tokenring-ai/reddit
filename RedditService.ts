@@ -1,5 +1,5 @@
 import {TokenRingService} from "@tokenring-ai/agent/types";
-import {doFetchWithRetry} from "@tokenring-ai/utility/doFetchWithRetry";
+import {HttpService} from "@tokenring-ai/utility/HttpService";
 
 export type RedditConfig = {
   baseUrl?: string;
@@ -19,12 +19,15 @@ export type RedditListingOptions = {
   before?: string;
 };
 
-export default class RedditService implements TokenRingService {
+export default class RedditService extends HttpService implements TokenRingService {
   name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
-  private readonly baseUrl: string;
+  
+  protected baseUrl: string;
+  protected defaultHeaders = {"User-Agent": "TokenRing-Writer/1.0 (https://github.com/tokenring/writer)"};
 
   constructor(config: RedditConfig = {}) {
+    super();
     this.baseUrl = config.baseUrl || "https://www.reddit.com";
   }
 
@@ -42,16 +45,7 @@ export default class RedditService implements TokenRingService {
       ...(opts.before && { before: opts.before }),
     });
 
-    const url = `${this.baseUrl}/r/${subreddit}/search.json?${params}`;
-
-    const res = await doFetchWithRetry(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "TokenRing-Writer/1.0 (https://github.com/tokenring/writer)",
-      },
-    });
-
-    return await this.parseJsonOrThrow(res, "Reddit search");
+    return this.fetchJson(`/r/${subreddit}/search.json?${params}`, {method: "GET"}, "Reddit search");
   }
 
   async retrievePost(postUrl: string): Promise<any> {
@@ -59,15 +53,14 @@ export default class RedditService implements TokenRingService {
 
     // Ensure URL ends with .json
     const jsonUrl = postUrl.endsWith('.json') ? postUrl : `${postUrl}.json`;
-
+    
+    // For external URLs, we need to use the full URL
+    const {doFetchWithRetry} = await import("@tokenring-ai/utility/doFetchWithRetry");
     const res = await doFetchWithRetry(jsonUrl, {
       method: "GET",
-      headers: {
-        "User-Agent": "TokenRing-Writer/1.0 (https://github.com/tokenring/writer)",
-      },
+      headers: this.defaultHeaders,
     });
-
-    return await this.parseJsonOrThrow(res, "Reddit post retrieval");
+    return this.parseJsonOrThrow(res, "Reddit post retrieval");
   }
 
   async getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<any> {
@@ -79,40 +72,7 @@ export default class RedditService implements TokenRingService {
       ...(opts.before && { before: opts.before }),
     });
 
-    const url = `${this.baseUrl}/r/${subreddit}/new.json?${params}`;
-
-    const res = await doFetchWithRetry(url, {
-      method: "GET",
-      headers: {
-        "User-Agent": "TokenRing-Writer/1.0 (https://github.com/tokenring/writer)",
-      },
-    });
-
-    return await this.parseJsonOrThrow(res, "Reddit latest posts");
+    return this.fetchJson(`/r/${subreddit}/new.json?${params}`, {method: "GET"}, "Reddit latest posts");
   }
 
-  private async parseJsonOrThrow(res: Response, context: string): Promise<any> {
-    const text = await res.text().catch(() => "");
-    try {
-      const json = text ? JSON.parse(text) : undefined;
-      if (!res.ok) {
-        throw Object.assign(new Error(`${context} failed (${res.status})`), {
-          status: res.status,
-          details: json ?? text?.slice(0, 500),
-        });
-      }
-      return json;
-    } catch (e: any) {
-      if (res.ok) {
-        return text;
-      }
-      if (!e.status) {
-        throw Object.assign(new Error(`${context} failed (${res.status})`), {
-          status: res.status,
-          details: text?.slice(0, 500),
-        });
-      }
-      throw e;
-    }
-  }
 }
