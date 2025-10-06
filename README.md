@@ -100,6 +100,39 @@ constructor(config: RedditConfig = {})
   })
   ```
 
+## Global Scripting Functions
+
+When `@tokenring-ai/scripting` is available, the reddit package registers native functions:
+
+- **searchSubreddit(subreddit, query)**: Searches posts within a subreddit and returns JSON results.
+  ```bash
+  /var $posts = searchSubreddit("programming", "javascript")
+  /call searchSubreddit("technology", "AI")
+  ```
+
+- **getRedditPost(url)**: Retrieves a Reddit post by URL.
+  ```bash
+  /var $post = getRedditPost("https://www.reddit.com/r/programming/comments/abc123/title/")
+  ```
+
+- **getLatestPosts(subreddit)**: Gets the latest posts from a subreddit.
+  ```bash
+  /var $latest = getLatestPosts("technology")
+  /call getLatestPosts("programming")
+  ```
+
+These functions integrate with the scripting system:
+
+```bash
+# Research workflow
+/var $posts = searchSubreddit("MachineLearning", "transformers")
+/var $analysis = llm("Analyze these Reddit discussions: $posts")
+
+# Monitor subreddit
+/var $latest = getLatestPosts("technology")
+/var $summary = llm("Summarize today's tech news from Reddit: $latest")
+```
+
 ## Usage Examples
 
 ### Direct Service Usage
