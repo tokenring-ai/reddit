@@ -5,6 +5,7 @@
  "dependencies": {
   "@tokenring-ai/ai-client": "0.1.0",
   "@tokenring-ai/agent": "0.1.0",
+  "@tokenring-ai/utility": "0.1.0",
   "zod": "^4.1.11"
  },
  "devDependencies": {
