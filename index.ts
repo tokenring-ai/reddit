@@ -6,7 +6,7 @@ import RedditService from "./RedditService.js";
 
 import * as tools from "./tools.ts";
 
-export const packageInfo: TokenRingPackage = {
+export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
@@ -42,9 +42,9 @@ export const packageInfo: TokenRingPackage = {
         }
       );
     });
-    agentTeam.addTools(packageInfo, tools);
+    agentTeam.addTools(packageJSON.name, tools);
     agentTeam.addServices(new RedditService());
   },
-};
+} as TokenRingPackage;
 
 export {default as RedditService} from "./RedditService.ts";
