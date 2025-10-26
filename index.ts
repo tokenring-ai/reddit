@@ -1,4 +1,5 @@
-import {AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
+import {AgentCommandService, AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
+import {AIService} from "@tokenring-ai/ai-client";
 import {ScriptingService} from "@tokenring-ai/scripting";
 import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService.ts";
 import packageJSON from './package.json' with {type: 'json'};
@@ -42,7 +43,9 @@ export default {
         }
       );
     });
-    agentTeam.addTools(packageJSON.name, tools);
+    agentTeam.waitForService(AIService, aiService =>
+      aiService.addTools(packageJSON.name, tools)
+    );
     agentTeam.addServices(new RedditService());
   },
 } as TokenRingPackage;
