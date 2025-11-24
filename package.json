@@ -6,11 +6,11 @@
   "@tokenring-ai/chat": "0.1.0",
   "@tokenring-ai/agent": "0.1.0",
   "@tokenring-ai/utility": "0.1.0",
-  "zod": "^4.1.12"
+  "zod": "^4.1.13"
  },
  "devDependencies": {
-  "vitest": "^4.0.12",
-  "@vitest/coverage-v8": "^4.0.12"
+  "vitest": "^4.0.13",
+  "@vitest/coverage-v8": "^4.0.13"
  },
  "exports": {
   ".": "./index.ts",
