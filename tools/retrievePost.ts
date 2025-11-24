@@ -1,15 +1,14 @@
 import Agent from "@tokenring-ai/agent/Agent";
+import {TokenRingToolDefinition} from "@tokenring-ai/chat/types";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
-export const name = "reddit/retrievePost";
+const name = "reddit/retrievePost";
 
-export async function execute(
+async function execute(
   {
     postUrl,
-  }: {
-    postUrl?: string;
-  },
+  }: z.infer<typeof inputSchema>,
   agent: Agent,
 ): Promise<{ post?: any }> {
   
@@ -29,8 +28,12 @@ export async function execute(
   }
 }
 
-export const description = "Retrieve a Reddit post's content and comments by URL.";
+const description = "Retrieve a Reddit post's content and comments by URL.";
 
-export const inputSchema = z.object({
+const inputSchema = z.object({
   postUrl: z.string().url().describe("Reddit post URL (e.g., https://www.reddit.com/r/subreddit/comments/id/title/)"),
 });
+
+export default {
+  name, description, inputSchema, execute,
+} as TokenRingToolDefinition<typeof inputSchema>;

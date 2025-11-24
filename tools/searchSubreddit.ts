@@ -1,10 +1,11 @@
 import Agent from "@tokenring-ai/agent/Agent";
+import {TokenRingToolDefinition} from "@tokenring-ai/chat/types";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
-export const name = "reddit/searchSubreddit";
+const name = "reddit/searchSubreddit";
 
-export async function execute(
+async function execute(
   {
     subreddit,
     query,
@@ -13,15 +14,7 @@ export async function execute(
     t,
     after,
     before,
-  }: {
-    subreddit?: string;
-    query?: string;
-    limit?: number;
-    sort?: 'relevance' | 'hot' | 'top' | 'new' | 'comments';
-    t?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
-    after?: string;
-    before?: string;
-  },
+  }: z.infer<typeof inputSchema>,
   agent: Agent,
 ): Promise<{ results?: any }> {
   
@@ -46,9 +39,9 @@ export async function execute(
   return {results};
 }
 
-export const description = "Search posts in a specific subreddit. Returns structured JSON with search results.";
+const description = "Search posts in a specific subreddit. Returns structured JSON with search results.";
 
-export const inputSchema = z.object({
+const inputSchema = z.object({
   subreddit: z.string().min(1).describe("Subreddit name (without r/ prefix)"),
   query: z.string().min(1).describe("Search query"),
   limit: z.number().int().positive().max(100).optional().describe("Number of results (1-100, default: 25)"),
@@ -57,3 +50,7 @@ export const inputSchema = z.object({
   after: z.string().optional().describe("Fullname of a thing for pagination"),
   before: z.string().optional().describe("Fullname of a thing for pagination"),
 });
+
+export default {
+  name, description, inputSchema, execute,
+} as TokenRingToolDefinition<typeof inputSchema>;

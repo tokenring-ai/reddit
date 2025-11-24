@@ -1,21 +1,17 @@
 import Agent from "@tokenring-ai/agent/Agent";
+import {TokenRingToolDefinition} from "@tokenring-ai/chat/types";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
-export const name = "reddit/getLatestPosts";
+const name = "reddit/getLatestPosts";
 
-export async function execute(
+async function execute(
   {
     subreddit,
     limit,
     after,
     before,
-  }: {
-    subreddit?: string;
-    limit?: number;
-    after?: string;
-    before?: string;
-  },
+  }: z.infer<typeof inputSchema>,
   agent: Agent,
 ): Promise<{ posts?: any }> {
   
@@ -34,11 +30,15 @@ export async function execute(
   return {posts};
 }
 
-export const description = "Get the latest posts from a subreddit. Returns newest posts in chronological order.";
+const description = "Get the latest posts from a subreddit. Returns newest posts in chronological order.";
 
-export const inputSchema = z.object({
+const inputSchema = z.object({
   subreddit: z.string().min(1).describe("Subreddit name (without r/ prefix)"),
   limit: z.number().int().positive().max(100).optional().describe("Number of posts (1-100, default: 25)"),
   after: z.string().optional().describe("Fullname of a thing for pagination"),
   before: z.string().optional().describe("Fullname of a thing for pagination"),
 });
+
+export default {
+  name, description, inputSchema, execute,
+} as TokenRingToolDefinition<typeof inputSchema>;
