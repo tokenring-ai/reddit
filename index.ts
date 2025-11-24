@@ -1,4 +1,4 @@
-import {AgentCommandService, AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
+import TokenRingApp, { TokenRingPlugin } from "@tokenring-ai/app";
 import {ChatService} from "@tokenring-ai/chat";
 import {ScriptingService} from "@tokenring-ai/scripting";
 import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService.ts";
@@ -11,8 +11,8 @@ export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
-  install(agentTeam: AgentTeam) {
-    agentTeam.services.waitForItemByType(ScriptingService).then((scriptingService: ScriptingService) => {
+  install(app: TokenRingApp) {
+    app.services.waitForItemByType(ScriptingService).then((scriptingService: ScriptingService) => {
       scriptingService.registerFunction("searchSubreddit", {
           type: 'native',
           params: ['subreddit', 'query'],
@@ -43,11 +43,11 @@ export default {
         }
       );
     });
-    agentTeam.waitForService(ChatService, chatService =>
+    app.waitForService(ChatService, chatService =>
       chatService.addTools(packageJSON.name, tools)
     );
-    agentTeam.addServices(new RedditService());
+    app.addServices(new RedditService());
   },
-} as TokenRingPackage;
+} as TokenRingPlugin;
 
 export {default as RedditService} from "./RedditService.ts";

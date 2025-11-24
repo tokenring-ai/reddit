@@ -1,6 +1,6 @@
-import {TokenRingService} from "@tokenring-ai/agent/types";
-import {doFetchWithRetry} from "@tokenring-ai/utility/doFetchWithRetry";
-import {HttpService} from "@tokenring-ai/utility/HttpService";
+import {TokenRingService} from "@tokenring-ai/app/types";
+import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
+import {HttpService} from "@tokenring-ai/utility/http/HttpService";
 
 export type RedditConfig = {
   baseUrl?: string;
