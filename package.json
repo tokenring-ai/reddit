@@ -1,16 +1,18 @@
 {
  "name": "@tokenring-ai/reddit",
- "version": "0.1.0",
+ "version": "0.2.0",
  "description": "Reddit integration for Token Ring",
  "dependencies": {
-  "@tokenring-ai/chat": "0.1.0",
-  "@tokenring-ai/agent": "0.1.0",
-  "@tokenring-ai/utility": "0.1.0",
+  "@tokenring-ai/app": "0.2.0",
+  "@tokenring-ai/chat": "0.2.0",
+  "@tokenring-ai/agent": "0.2.0",
+  "@tokenring-ai/utility": "0.2.0",
+  "@tokenring-ai/scripting": "0.2.0",
   "zod": "^4.1.13"
  },
  "devDependencies": {
-  "vitest": "^4.0.13",
-  "@vitest/coverage-v8": "^4.0.13"
+  "vitest": "^4.0.14",
+  "@vitest/coverage-v8": "^4.0.14"
  },
  "exports": {
   ".": "./index.ts",
