@@ -12,7 +12,7 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app: TokenRingApp) {
-    app.services.waitForItemByType(ScriptingService).then((scriptingService: ScriptingService) => {
+    app.services.waitForItemByType(ScriptingService, (scriptingService: ScriptingService) => {
       scriptingService.registerFunction("searchSubreddit", {
           type: 'native',
           params: ['subreddit', 'query'],
