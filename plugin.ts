@@ -49,4 +49,4 @@ export default {
     );
     app.addServices(new RedditService());
   },
-} as TokenRingPlugin;
+} satisfies TokenRingPlugin;
