@@ -1,7 +1,7 @@
 import TokenRingApp, {TokenRingPlugin} from "@tokenring-ai/app";
 import {ChatService} from "@tokenring-ai/chat";
 import {ScriptingService} from "@tokenring-ai/scripting";
-import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService.ts";
+import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService";
 import packageJSON from './package.json' with {type: 'json'};
 import RedditService from "./RedditService.js";
 
