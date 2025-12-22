@@ -3,7 +3,7 @@ import {TokenRingToolDefinition} from "@tokenring-ai/chat/types";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
-const name = "reddit/retrievePost";
+const name = "reddit_retrievePost";
 
 async function execute(
   {
