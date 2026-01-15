@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import {describe, expect, it} from "vitest";
 import RedditService from "../RedditService.ts";
 
 describe("RedditService Integration Tests", () => {

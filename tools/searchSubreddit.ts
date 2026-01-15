@@ -28,7 +28,7 @@ async function execute(
     throw new Error(`[${name}] query is required`);
   }
 
-  agent.infoLine(`[redditSearch] Searching r/${subreddit} for: ${query}`);
+  agent.infoMessage(`[redditSearch] Searching r/${subreddit} for: ${query}`);
   const results = await reddit.searchSubreddit(subreddit, query, {
     limit,
     sort,

@@ -19,7 +19,7 @@ async function execute(
   }
 
   try {
-    agent.infoLine(`[redditRetrievePost] Retrieving: ${postUrl}`);
+    agent.infoMessage(`[redditRetrievePost] Retrieving: ${postUrl}`);
     const post = await reddit.retrievePost(postUrl);
     return {post};
   } catch (e: any) {
