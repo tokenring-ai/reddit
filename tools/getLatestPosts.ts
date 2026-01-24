@@ -4,6 +4,7 @@ import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
 const name = "reddit_getLatestPosts";
+const displayName = "Reddit/getLatestPosts";
 
 async function execute(
   {
@@ -40,5 +41,5 @@ const inputSchema = z.object({
 });
 
 export default {
-  name, description, inputSchema, execute,
+  name, displayName, description, inputSchema, execute,
 } satisfies TokenRingToolDefinition<typeof inputSchema>;
