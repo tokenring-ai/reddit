@@ -1,5 +1,5 @@
 import Agent from "@tokenring-ai/agent/Agent";
-import {TokenRingToolDefinition} from "@tokenring-ai/chat/schema";
+import {TokenRingToolDefinition, type TokenRingToolJSONResult} from "@tokenring-ai/chat/schema";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
@@ -12,9 +12,9 @@ async function execute(
     limit,
     after,
     before,
-  }: z.infer<typeof inputSchema>,
+  }: z.output<typeof inputSchema>,
   agent: Agent,
-): Promise<{ posts?: any }> {
+): Promise<TokenRingToolJSONResult<{ posts?: any }>> {
   
   const reddit = agent.requireServiceByType(RedditService);
 
@@ -28,7 +28,10 @@ async function execute(
     after,
     before,
   });
-  return {posts};
+  return {
+    type: "json",
+    data: {posts}
+  };
 }
 
 const description = "Get the latest posts from a subreddit. Returns newest posts in chronological order.";

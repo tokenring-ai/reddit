@@ -1,5 +1,5 @@
 import Agent from "@tokenring-ai/agent/Agent";
-import {TokenRingToolDefinition} from "@tokenring-ai/chat/schema";
+import {TokenRingToolDefinition, type TokenRingToolJSONResult} from "@tokenring-ai/chat/schema";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
@@ -9,9 +9,9 @@ const displayName = "Reddit/retrievePost";
 async function execute(
   {
     postUrl,
-  }: z.infer<typeof inputSchema>,
+  }: z.output<typeof inputSchema>,
   agent: Agent,
-): Promise<{ post?: any }> {
+): Promise<TokenRingToolJSONResult<{ post?: any }>> {
   
   const reddit = agent.requireServiceByType(RedditService);
 
@@ -22,7 +22,10 @@ async function execute(
   try {
     agent.infoMessage(`[redditRetrievePost] Retrieving: ${postUrl}`);
     const post = await reddit.retrievePost(postUrl);
-    return {post};
+    return {
+      type: "json",
+      data: {post}
+    };
   } catch (e: any) {
     const message = e?.message || String(e);
     throw new Error(`[${name}] ${message}`);
