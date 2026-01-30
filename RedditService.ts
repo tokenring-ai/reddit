@@ -1,10 +1,7 @@
 import {TokenRingService} from "@tokenring-ai/app/types";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
 import {HttpService} from "@tokenring-ai/utility/http/HttpService";
-
-export type RedditConfig = {
-  baseUrl?: string;
-};
+import type {ParsedRedditConfig} from "./schema.ts";
 
 export type RedditSearchOptions = {
   limit?: number;
@@ -27,7 +24,7 @@ export default class RedditService extends HttpService implements TokenRingServi
   protected baseUrl: string;
   protected defaultHeaders = {"User-Agent": "TokenRing-Writer/1.0 (https://github.com/tokenring/writer)"};
 
-  constructor(config: RedditConfig = {}) {
+  constructor(private config: ParsedRedditConfig) {
     super();
     this.baseUrl = config.baseUrl || "https://www.reddit.com";
   }

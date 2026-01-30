@@ -5,10 +5,13 @@ import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService";
 import {z} from "zod";
 import packageJSON from './package.json' with {type: 'json'};
 import RedditService from "./RedditService.js";
+import {RedditConfigSchema} from "./schema.ts";
 
 import tools from "./tools.ts";
 
-const packageConfigSchema = z.object({});
+const packageConfigSchema = z.object({
+  reddit: RedditConfigSchema.prefault({})
+});
 
 export default {
   name: packageJSON.name,
@@ -49,7 +52,7 @@ export default {
     app.waitForService(ChatService, chatService =>
       chatService.addTools(tools)
     );
-    app.addServices(new RedditService());
+    app.addServices(new RedditService(config.reddit));
   },
   config: packageConfigSchema
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
