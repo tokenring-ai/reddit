@@ -1,9 +1,11 @@
 # @tokenring-ai/reddit
 
 ## Overview
+
 A Reddit integration service for TokenRing AI, providing access to Reddit's JSON API for searching subreddits, retrieving posts, and monitoring latest content. This package enables AI agents to interact with Reddit in a structured, type-safe manner.
 
 ## Features
+
 - **Subreddit Search**: Search posts within specific subreddits with sorting and filtering
 - **Post Retrieval**: Retrieve full post content and comments by URL
 - **Latest Posts**: Get newest posts from subreddits with pagination support
@@ -18,25 +20,126 @@ A Reddit integration service for TokenRing AI, providing access to Reddit's JSON
 bun install @tokenring-ai/reddit
 ```
 
-## Core Components/API
+## Plugin Configuration
 
-### RedditService
+The plugin uses a nested configuration schema with a base URL option:
 
-The primary service for Reddit API interactions.
-
-#### Constructor
 ```typescript
-new RedditService(config: RedditConfig)
-```
-
-**Configuration:**
-```typescript
-interface RedditConfig {
-  baseUrl?: string;  // Optional custom base URL (default: https://www.reddit.com)
+interface RedditPluginConfig {
+  reddit: {
+    baseUrl?: string;  // Optional custom base URL (default: https://www.reddit.com)
+  };
 }
 ```
 
-#### Core Methods
+**Configuration Example:**
+
+```typescript
+// Default configuration
+const config = {
+  reddit: {
+    baseUrl: "https://www.reddit.com"
+  }
+};
+
+// Custom base URL
+const customConfig = {
+  reddit: {
+    baseUrl: "https://custom.reddit.com"
+  }
+};
+```
+
+## Agent Configuration
+
+This package does not require agent-specific configuration.
+
+## Tools
+
+### searchSubreddit
+
+Search posts in a specific subreddit. Returns structured JSON with search results.
+
+**Tool Definition:**
+```typescript
+{
+  name: "reddit_searchSubreddit",
+  displayName: "Reddit/searchSubreddit",
+  description: "Search posts in a specific subreddit. Returns structured JSON with search results.",
+  inputSchema: {
+    subreddit: z.string().min(1).describe("Subreddit name (without r/ prefix)"),
+    query: z.string().min(1).describe("Search query"),
+    limit: z.number().int().positive().max(100).optional().describe("Number of results (1-100, default: 25)"),
+    sort: z.enum(['relevance', 'hot', 'top', 'new', 'comments']).optional().describe("Sort order (default: relevance)"),
+    t: z.enum(['hour', 'day', 'week', 'month', 'year', 'all']).optional().describe("Time period for top/hot sorting"),
+    after: z.string().optional().describe("Fullname of a thing for pagination"),
+    before: z.string().optional().describe("Fullname of a thing for pagination"),
+  }
+}
+```
+
+### retrievePost
+
+Retrieve a Reddit post's content and comments by URL.
+
+**Tool Definition:**
+```typescript
+{
+  name: "reddit_retrievePost",
+  displayName: "Reddit/retrievePost",
+  description: "Retrieve a Reddit post's content and comments by URL.",
+  inputSchema: {
+    postUrl: z.string().url().describe("Reddit post URL (e.g., https://www.reddit.com/r/subreddit/comments/id/title/)"),
+  }
+}
+```
+
+### getLatestPosts
+
+Get the latest posts from a subreddit. Returns newest posts in chronological order.
+
+**Tool Definition:**
+```typescript
+{
+  name: "reddit_getLatestPosts",
+  displayName: "Reddit/getLatestPosts",
+  description: "Get the latest posts from a subreddit. Returns newest posts in chronological order.",
+  inputSchema: {
+    subreddit: z.string().min(1).describe("Subreddit name (without r/ prefix)"),
+    limit: z.number().int().positive().max(100).optional().describe("Number of posts (1-100, default: 25)"),
+    after: z.string().optional().describe("Fullname of a thing for pagination"),
+    before: z.string().optional().describe("Fullname of a thing for pagination"),
+  }
+}
+```
+
+## Services
+
+### RedditService
+
+Core service for Reddit API interactions.
+
+**Service Definition:**
+```typescript
+class RedditService extends HttpService implements TokenRingService {
+  name = "RedditService";
+  description = "Service for searching Reddit posts and retrieving content";
+
+  constructor(config: ParsedRedditConfig);
+  async searchSubreddit(subreddit: string, query: string, opts?: RedditSearchOptions): Promise<any>;
+  async retrievePost(postUrl: string): Promise<any>;
+  async getLatestPosts(subreddit: string, opts?: RedditListingOptions): Promise<any>;
+}
+```
+
+**Configuration Interface:**
+```typescript
+interface ParsedRedditConfig {
+  baseUrl: string;
+}
+```
+
+**Service Methods:**
 
 **searchSubreddit:**
 ```typescript
@@ -56,7 +159,7 @@ async getLatestPosts(subreddit: string, opts?: RedditListingOptions): Promise<an
 ```
 Get latest posts from a subreddit.
 
-#### Search Options
+**Search Options:**
 ```typescript
 interface RedditSearchOptions {
   limit?: number;                                     // Number of results (1-100, default: 25)
@@ -67,7 +170,7 @@ interface RedditSearchOptions {
 }
 ```
 
-#### Listing Options
+**Listing Options:**
 ```typescript
 interface RedditListingOptions {
   limit?: number;        // Number of posts (1-100, default: 25)
@@ -76,56 +179,35 @@ interface RedditListingOptions {
 }
 ```
 
-### Tools
+## Scripting Integration
 
-#### searchSubreddit
+The following functions are available in the scripting context:
+
+### searchSubreddit(subreddit, query)
+
+Search posts in a subreddit.
+
 ```typescript
-{
-  name: "reddit_searchSubreddit",
-  description: "Search posts in a specific subreddit. Returns structured JSON with search results.",
-  inputSchema: {
-    subreddit: z.string().min(1),
-    query: z.string().min(1),
-    limit: z.number().int().positive().max(100).optional(),
-    sort: z.enum(['relevance', 'hot', 'top', 'new', 'comments']).optional(),
-    t: z.enum(['hour', 'day', 'week', 'month', 'year', 'all']).optional(),
-    after: z.string().optional(),
-    before: z.string().optional(),
-  }
-}
+// Available globally in scripting context
+const results = await searchSubreddit("programming", "javascript");
 ```
 
-#### retrievePost
+### getLatestPosts(subreddit)
+
+Get latest posts from a subreddit.
+
 ```typescript
-{
-  name: "reddit_retrievePost",
-  description: "Retrieve a Reddit post's content and comments by URL.",
-  inputSchema: {
-    postUrl: z.string().url(),
-  }
-}
+// Available globally in scripting context
+const posts = await getLatestPosts("MachineLearning");
 ```
 
-#### getLatestPosts
-```typescript
-{
-  name: "reddit_getLatestPosts",
-  description: "Get the latest posts from a subreddit. Returns newest posts in chronological order.",
-  inputSchema: {
-    subreddit: z.string().min(1),
-    limit: z.number().int().positive().max(100).optional(),
-    after: z.string().optional(),
-    before: z.string().optional(),
-  }
-}
-```
+### getRedditPost(url)
 
-## Plugin Configuration
-
-The plugin has an empty configuration schema:
+Retrieve a Reddit post by URL.
 
 ```typescript
-const packageConfigSchema = z.object({});
+// Available globally in scripting context
+const post = await getRedditPost("https://www.reddit.com/r/programming/comments/abc123/post/");
 ```
 
 ## Usage Examples
@@ -135,7 +217,9 @@ const packageConfigSchema = z.object({});
 ```typescript
 import RedditService from "@tokenring-ai/reddit";
 
-const reddit = new RedditService();
+const reddit = new RedditService({
+  baseUrl: "https://www.reddit.com"
+});
 
 // Search posts in subreddit
 const results = await reddit.searchSubreddit("programming", "javascript", {
@@ -231,7 +315,9 @@ for (const post of posts.data.children) {
 
 ```typescript
 // Default configuration (uses https://www.reddit.com)
-const reddit = new RedditService();
+const reddit = new RedditService({
+  baseUrl: "https://www.reddit.com"
+});
 
 // Custom base URL
 const customReddit = new RedditService({
@@ -246,27 +332,13 @@ The service automatically sets a compliant User-Agent:
 User-Agent: TokenRing-Writer/1.0 (https://github.com/tokenring/writer)
 ```
 
-## Services
-
-### RedditService
-
-```typescript
-class RedditService extends HttpService implements TokenRingService {
-  name = "RedditService";
-  description = "Service for searching Reddit posts and retrieving content";
-
-  async searchSubreddit(subreddit: string, query: string, opts?: RedditSearchOptions): Promise<any>;
-  async retrievePost(postUrl: string): Promise<any>;
-  async getLatestPosts(subreddit: string, opts?: RedditListingOptions): Promise<any>;
-}
-```
-
 ## Development
 
 ### Testing
 
 ```bash
 bun run test
+bun run test:watch
 bun run test:coverage
 ```
 
@@ -277,22 +349,42 @@ pkg/reddit/
 ├── RedditService.ts              # Core Reddit API service
 ├── index.ts                      # Package exports
 ├── plugin.ts                     # TokenRing plugin integration
-├── package.json                  # Package configuration
-├── tools/                        # Chat tools
+├── schema.ts                     # Zod configuration schema
+├── tools.ts                      # Tool exports
+├── tools/
 │   ├── searchSubreddit.ts        # Subreddit search tool
 │   ├── retrievePost.ts           # Post retrieval tool
 │   └── getLatestPosts.ts         # Latest posts tool
-├── tools.ts                      # Tool exports
+├── test/
+│   └── RedditService.integration.test.js  # Integration tests
+├── package.json                  # Package configuration
+├── vitest.config.ts              # Vitest configuration
 ├── LICENSE                       # MIT license
-└── test/                         # Test suite
-    └── RedditService.integration.test.js
+└── tsconfig.json                 # TypeScript configuration
 ```
 
+### Dependencies
+
+**Runtime Dependencies:**
+- `@tokenring-ai/app`: TokenRing application framework
+- `@tokenring-ai/chat`: Chat service and tool system
+- `@tokenring-ai/agent`: Agent framework
+- `@tokenring-ai/utility`: Shared utilities including HTTP service
+- `@tokenring-ai/scripting`: Scripting service
+- `zod`: Schema validation
+
+**Development Dependencies:**
+- `vitest`: Test runner
+- `@vitest/coverage-v8`: Test coverage reporting
+- `typescript`: TypeScript compiler
+
 ### Contribution Guidelines
+
 - Follow existing code style and patterns
 - Add unit tests for new functionality
 - Update documentation for new features
 - Ensure all changes work with TokenRing agent framework
+- Maintain consistency with other package documentation patterns
 
 ## License
 
