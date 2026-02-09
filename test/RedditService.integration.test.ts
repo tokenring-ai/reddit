@@ -1,9 +1,10 @@
 import {describe, expect, it} from "vitest";
 import RedditService from "../RedditService.ts";
+import {RedditConfigSchema} from "../schema.ts";
 
 describe("RedditService Integration Tests", () => {
 	it("should search subreddit successfully", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		const result = await reddit.searchSubreddit("programming", "javascript", {
 			limit: 3,
 		});
@@ -16,7 +17,7 @@ describe("RedditService Integration Tests", () => {
 	});
 
 	it("should handle pagination with after parameter", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		const result = await reddit.searchSubreddit("technology", "AI", {
 			limit: 2,
 			sort: "top",
@@ -28,21 +29,21 @@ describe("RedditService Integration Tests", () => {
 	});
 
 	it("should throw error for empty subreddit", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		await expect(reddit.searchSubreddit("", "test")).rejects.toThrow(
-			"subreddit is required",
-		);
+      "subreddit is required",
+    );
 	});
 
 	it("should throw error for empty query", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		await expect(reddit.searchSubreddit("test", "")).rejects.toThrow(
-			"query is required",
-		);
+      "query is required",
+    );
 	});
 
 	it("should retrieve post content by URL", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		// Using a well-known Reddit post URL for testing
 		const postUrl =
 			"https://www.reddit.com/r/announcements/comments/5q4qmg/out_with_2016_in_with_2017/";
@@ -54,14 +55,14 @@ describe("RedditService Integration Tests", () => {
 	});
 
 	it("should throw error for empty post URL", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		await expect(reddit.retrievePost("")).rejects.toThrow(
-			"postUrl is required",
-		);
+      "postUrl is required",
+    );
 	});
 
 	it("should get latest posts from subreddit", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		const result = await reddit.getLatestPosts("programming", {
 			limit: 5,
 		});
@@ -74,9 +75,9 @@ describe("RedditService Integration Tests", () => {
 	});
 
 	it("should throw error for empty subreddit in getLatestPosts", async () => {
-		const reddit = new RedditService();
+		const reddit = new RedditService(RedditConfigSchema.parse({}));
 		await expect(reddit.getLatestPosts("")).rejects.toThrow(
-			"subreddit is required",
-		);
+      "subreddit is required",
+    );
 	});
 });

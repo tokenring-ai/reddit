@@ -18,7 +18,7 @@ export type RedditListingOptions = {
 };
 
 export default class RedditService extends HttpService implements TokenRingService {
-  name = "RedditService";
+  readonly name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
   
   protected baseUrl: string;

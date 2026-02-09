@@ -295,7 +295,7 @@ const postAnalysis = await reddit.retrievePost(
 ### Monitoring Subreddits with Pagination
 
 ```typescript
-const reddit = new RedditService();
+const reddit = new RedditService(RedditConfigSchema.parse({}));
 
 // Get latest posts with pagination
 const posts = await reddit.getLatestPosts("news", {
