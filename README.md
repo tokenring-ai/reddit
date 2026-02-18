@@ -124,7 +124,7 @@ Core service for Reddit API interactions.
 class RedditService extends HttpService implements TokenRingService {
   name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
-
+  
   constructor(config: ParsedRedditConfig);
   async searchSubreddit(subreddit: string, query: string, opts?: RedditSearchOptions): Promise<any>;
   async retrievePost(postUrl: string): Promise<any>;
@@ -356,7 +356,7 @@ pkg/reddit/
 │   ├── retrievePost.ts           # Post retrieval tool
 │   └── getLatestPosts.ts         # Latest posts tool
 ├── test/
-│   └── RedditService.integration.test.js  # Integration tests
+│   └── RedditService.integration.test.ts  # Integration tests
 ├── package.json                  # Package configuration
 ├── vitest.config.ts              # Vitest configuration
 ├── LICENSE                       # MIT license
