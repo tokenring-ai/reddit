@@ -122,7 +122,7 @@ Core service for Reddit API interactions.
 **Service Definition:**
 ```typescript
 class RedditService extends HttpService implements TokenRingService {
-  name = "RedditService";
+  readonly name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
   
   constructor(config: ParsedRedditConfig);
@@ -192,15 +192,6 @@ Search posts in a subreddit.
 const results = await searchSubreddit("programming", "javascript");
 ```
 
-### getLatestPosts(subreddit)
-
-Get latest posts from a subreddit.
-
-```typescript
-// Available globally in scripting context
-const posts = await getLatestPosts("MachineLearning");
-```
-
 ### getRedditPost(url)
 
 Retrieve a Reddit post by URL.
@@ -208,6 +199,15 @@ Retrieve a Reddit post by URL.
 ```typescript
 // Available globally in scripting context
 const post = await getRedditPost("https://www.reddit.com/r/programming/comments/abc123/post/");
+```
+
+### getLatestPosts(subreddit)
+
+Get latest posts from a subreddit.
+
+```typescript
+// Available globally in scripting context
+const posts = await getLatestPosts("MachineLearning");
 ```
 
 ## Usage Examples
@@ -342,6 +342,12 @@ bun run test:watch
 bun run test:coverage
 ```
 
+### Build
+
+```bash
+bun run build
+```
+
 ### Package Structure
 
 ```
@@ -360,7 +366,7 @@ pkg/reddit/
 ├── package.json                  # Package configuration
 ├── vitest.config.ts              # Vitest configuration
 ├── LICENSE                       # MIT license
-└── tsconfig.json                 # TypeScript configuration
+└── .gitignore                    # Git ignore patterns
 ```
 
 ### Dependencies
@@ -370,13 +376,21 @@ pkg/reddit/
 - `@tokenring-ai/chat`: Chat service and tool system
 - `@tokenring-ai/agent`: Agent framework
 - `@tokenring-ai/utility`: Shared utilities including HTTP service
-- `@tokenring-ai/scripting`: Scripting service
+- `@tokenring-ai/scripting`: Scripting service (used by plugin)
 - `zod`: Schema validation
 
 **Development Dependencies:**
 - `vitest`: Test runner
 - `@vitest/coverage-v8`: Test coverage reporting
-- `typescript`: TypeScript compiler
+- `typescript`: TypeScript compiler (uses root tsconfig.json)
+
+### TypeScript Configuration
+
+This package uses the root-level `tsconfig.json` for type checking. To verify types:
+
+```bash
+bun run build
+```
 
 ### Contribution Guidelines
 
