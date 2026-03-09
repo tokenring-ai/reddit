@@ -4,9 +4,9 @@
 
 A Reddit integration service for TokenRing AI, providing access to Reddit's JSON API for searching subreddits, retrieving posts, and monitoring latest content. This package enables AI agents to interact with Reddit in a structured, type-safe manner.
 
-## Features
+## Key Features
 
-- **Subreddit Search**: Search posts within specific subreddits with sorting and filtering
+- **Subreddit Search**: Search posts within specific subreddits with sorting and filtering options
 - **Post Retrieval**: Retrieve full post content and comments by URL
 - **Latest Posts**: Get newest posts from subreddits with pagination support
 - **Type-Safe Configuration**: Zod schema validation for all inputs
@@ -56,11 +56,12 @@ This package does not require agent-specific configuration.
 
 ## Tools
 
-### searchSubreddit
+### reddit_searchSubreddit
 
 Search posts in a specific subreddit. Returns structured JSON with search results.
 
 **Tool Definition:**
+
 ```typescript
 {
   name: "reddit_searchSubreddit",
@@ -78,11 +79,24 @@ Search posts in a specific subreddit. Returns structured JSON with search result
 }
 ```
 
-### retrievePost
+**Usage Example:**
+
+```typescript
+const results = await agent.executeTool("reddit_searchSubreddit", {
+  subreddit: "programming",
+  query: "javascript async await",
+  limit: 10,
+  sort: "relevance",
+  t: "week"
+});
+```
+
+### reddit_retrievePost
 
 Retrieve a Reddit post's content and comments by URL.
 
 **Tool Definition:**
+
 ```typescript
 {
   name: "reddit_retrievePost",
@@ -94,11 +108,20 @@ Retrieve a Reddit post's content and comments by URL.
 }
 ```
 
-### getLatestPosts
+**Usage Example:**
+
+```typescript
+const post = await agent.executeTool("reddit_retrievePost", {
+  postUrl: "https://www.reddit.com/r/programming/comments/abc123/my_post/"
+});
+```
+
+### reddit_getLatestPosts
 
 Get the latest posts from a subreddit. Returns newest posts in chronological order.
 
 **Tool Definition:**
+
 ```typescript
 {
   name: "reddit_getLatestPosts",
@@ -113,13 +136,23 @@ Get the latest posts from a subreddit. Returns newest posts in chronological ord
 }
 ```
 
+**Usage Example:**
+
+```typescript
+const posts = await agent.executeTool("reddit_getLatestPosts", {
+  subreddit: "technology",
+  limit: 20
+});
+```
+
 ## Services
 
 ### RedditService
 
-Core service for Reddit API interactions.
+Core service for Reddit API interactions. This service implements `TokenRingService` and extends the `HttpService` base class to handle HTTP requests with retry logic and automatic JSON parsing.
 
 **Service Definition:**
+
 ```typescript
 class RedditService extends HttpService implements TokenRingService {
   readonly name = "RedditService";
@@ -133,6 +166,7 @@ class RedditService extends HttpService implements TokenRingService {
 ```
 
 **Configuration Interface:**
+
 ```typescript
 interface ParsedRedditConfig {
   baseUrl: string;
@@ -141,25 +175,74 @@ interface ParsedRedditConfig {
 
 **Service Methods:**
 
-**searchSubreddit:**
+#### searchSubreddit
+
+Search posts within a specific subreddit.
+
 ```typescript
 async searchSubreddit(subreddit: string, query: string, opts?: RedditSearchOptions): Promise<any>
 ```
-Search posts within a specific subreddit.
 
-**retrievePost:**
+**Parameters:**
+- `subreddit` (string): Subreddit name without the r/ prefix
+- `query` (string): Search query string
+- `opts` (RedditSearchOptions, optional): Additional options for the search
+
+**Returns**: Promise containing the search results
+
+**Example:**
+
+```typescript
+const results = await reddit.searchSubreddit("programming", "typescript", {
+  limit: 10,
+  sort: "relevance",
+  t: "week"
+});
+```
+
+#### retrievePost
+
+Retrieve a Reddit post by URL.
+
 ```typescript
 async retrievePost(postUrl: string): Promise<any>
 ```
-Retrieve full post content and comments by URL.
 
-**getLatestPosts:**
+**Parameters:**
+- `postUrl` (string): Full URL to the Reddit post
+
+**Returns**: Promise containing the post data and comments
+
+**Example:**
+
+```typescript
+const post = await reddit.retrievePost("https://www.reddit.com/r/programming/comments/abc123/my_post/");
+```
+
+#### getLatestPosts
+
+Get the latest posts from a subreddit.
+
 ```typescript
 async getLatestPosts(subreddit: string, opts?: RedditListingOptions): Promise<any>
 ```
-Get latest posts from a subreddit.
+
+**Parameters:**
+- `subreddit` (string): Subreddit name without the r/ prefix
+- `opts` (RedditListingOptions, optional): Additional options for the request
+
+**Returns**: Promise containing the latest posts
+
+**Example:**
+
+```typescript
+const posts = await reddit.getLatestPosts("technology", {
+  limit: 20
+});
+```
 
 **Search Options:**
+
 ```typescript
 interface RedditSearchOptions {
   limit?: number;                                     // Number of results (1-100, default: 25)
@@ -171,11 +254,12 @@ interface RedditSearchOptions {
 ```
 
 **Listing Options:**
+
 ```typescript
 interface RedditListingOptions {
-  limit?: number;        // Number of posts (1-100, default: 25)
-  after?: string;        // Pagination cursor
-  before?: string;       // Pagination cursor
+  limit?: number;   // Number of posts (1-100, default: 25)
+  after?: string;   // Pagination cursor
+  before?: string;  // Pagination cursor
 }
 ```
 
@@ -266,9 +350,9 @@ const postData = await agent.executeTool("reddit_retrievePost", {
 
 ```typescript
 // Functions available in scripting context
-searchSubreddit("programming", "async await");
-getLatestPosts("MachineLearning");
-getRedditPost("https://reddit.com/r/programming/comments/abc123/title/");
+const searchResults = await searchSubreddit("programming", "async await");
+const latestPosts = await getLatestPosts("MachineLearning");
+const post = await getRedditPost("https://reddit.com/r/programming/comments/abc123/title/");
 ```
 
 ### Content Research Workflow
@@ -328,9 +412,62 @@ const customReddit = new RedditService({
 ### Request Headers
 
 The service automatically sets a compliant User-Agent:
+
 ```
 User-Agent: TokenRing-Writer/1.0 (https://github.com/tokenring/writer)
 ```
+
+## Integration
+
+### Agent System Integration
+
+The plugin automatically integrates with the agent system by:
+
+1. Waiting for the `ScriptingService` to register custom functions
+2. Registering three custom functions: `searchSubreddit`, `getRedditPost`, `getLatestPosts`
+3. Waiting for the `ChatService` to register chat tools
+4. Adding three tools to the chat service
+
+### Service Registration
+
+The plugin registers the `RedditService` with the application:
+
+```typescript
+app.addServices(new RedditService(config.reddit));
+```
+
+### Chat Service Integration
+
+The plugin waits for the `ChatService` and registers its tools:
+
+```typescript
+app.waitForService(ChatService, chatService =>
+  chatService.addTools(tools)
+);
+```
+
+### Scripting Service Integration
+
+The plugin registers functions with the `ScriptingService`:
+
+```typescript
+scriptingService.registerFunction("searchSubreddit", {
+  type: 'native',
+  params: ['subreddit', 'query'],
+  async execute(this: ScriptingThis, subreddit: string, query: string): Promise<string> {
+    const result = await this.agent.requireServiceByType(RedditService).searchSubreddit(subreddit, query);
+    return JSON.stringify(result.data.children);
+  }
+});
+```
+
+## RPC Endpoints
+
+This package does not define any RPC endpoints.
+
+## State Management
+
+This package does not implement state management.
 
 ## Development
 
