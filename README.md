@@ -12,7 +12,8 @@ A Reddit integration service for TokenRing AI, providing access to Reddit's JSON
 - **Type-Safe Configuration**: Zod schema validation for all inputs
 - **Plugin Architecture**: Automatic registration with TokenRing applications
 - **Scripting Support**: Global functions for programmatic access
-- **Chat Tools Integration**: Three tools registered with the chat service
+- **Chat Tools Integration**: Three tools registered with the chat service (`reddit_searchSubreddit`, `reddit_retrievePost`, `reddit_getLatestPosts`)
+- **Compliant User-Agent**: Automatic User-Agent header for Reddit API compliance
 
 ## Installation
 
@@ -460,14 +461,6 @@ scriptingService.registerFunction("searchSubreddit", {
   }
 });
 ```
-
-## RPC Endpoints
-
-This package does not define any RPC endpoints.
-
-## State Management
-
-This package does not implement state management.
 
 ## Development
 
