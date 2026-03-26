@@ -29,7 +29,7 @@ async function execute(
     throw new Error(`[${name}] query is required`);
   }
 
-  agent.infoMessage(`[redditSearch] Searching r/${subreddit} for: ${query}`);
+  agent.infoMessage(`[${name}] Searching r/${subreddit} for: ${query}`);
   const results = await reddit.searchSubreddit(subreddit, query, {
     limit,
     sort,

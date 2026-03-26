@@ -23,14 +23,15 @@ bun install @tokenring-ai/reddit
 
 ## Plugin Configuration
 
-The plugin uses a nested configuration schema with a base URL option:
+The plugin uses a configuration schema with a nested `reddit` object containing a base URL option:
 
 ```typescript
-interface RedditPluginConfig {
-  reddit: {
-    baseUrl?: string;  // Optional custom base URL (default: https://www.reddit.com)
-  };
-}
+import { RedditConfigSchema } from "@tokenring-ai/reddit/schema";
+import { z } from "zod";
+
+const packageConfigSchema = z.object({
+  reddit: RedditConfigSchema.prefault({})
+});
 ```
 
 **Configuration Example:**
@@ -90,6 +91,7 @@ const results = await agent.executeTool("reddit_searchSubreddit", {
   sort: "relevance",
   t: "week"
 });
+// Returns: { type: "json", data: { results: <search results> } }
 ```
 
 ### reddit_retrievePost
@@ -115,6 +117,7 @@ Retrieve a Reddit post's content and comments by URL.
 const post = await agent.executeTool("reddit_retrievePost", {
   postUrl: "https://www.reddit.com/r/programming/comments/abc123/my_post/"
 });
+// Returns: { type: "json", data: { post: <post data> } }
 ```
 
 ### reddit_getLatestPosts
@@ -144,6 +147,7 @@ const posts = await agent.executeTool("reddit_getLatestPosts", {
   subreddit: "technology",
   limit: 20
 });
+// Returns: { type: "json", data: { posts: <posts data> } }
 ```
 
 ## Services
@@ -212,7 +216,7 @@ async retrievePost(postUrl: string): Promise<any>
 **Parameters:**
 - `postUrl` (string): Full URL to the Reddit post
 
-**Returns**: Promise containing the post data and comments
+**Returns**: Promise containing the post data and comments (as an array `[submission, comments]`)
 
 **Example:**
 
@@ -275,6 +279,7 @@ Search posts in a subreddit.
 ```typescript
 // Available globally in scripting context
 const results = await searchSubreddit("programming", "javascript");
+// Returns: JSON string of result data
 ```
 
 ### getRedditPost(url)
@@ -284,6 +289,7 @@ Retrieve a Reddit post by URL.
 ```typescript
 // Available globally in scripting context
 const post = await getRedditPost("https://www.reddit.com/r/programming/comments/abc123/post/");
+// Returns: JSON string of post data
 ```
 
 ### getLatestPosts(subreddit)
@@ -293,6 +299,7 @@ Get latest posts from a subreddit.
 ```typescript
 // Available globally in scripting context
 const posts = await getLatestPosts("MachineLearning");
+// Returns: JSON string of posts data
 ```
 
 ## Usage Examples
@@ -301,10 +308,11 @@ const posts = await getLatestPosts("MachineLearning");
 
 ```typescript
 import RedditService from "@tokenring-ai/reddit";
+import { RedditConfigSchema } from "@tokenring-ai/reddit/schema";
 
-const reddit = new RedditService({
+const reddit = new RedditService(RedditConfigSchema.parse({
   baseUrl: "https://www.reddit.com"
-});
+}));
 
 // Search posts in subreddit
 const results = await reddit.searchSubreddit("programming", "javascript", {
@@ -380,6 +388,9 @@ const postAnalysis = await reddit.retrievePost(
 ### Monitoring Subreddits with Pagination
 
 ```typescript
+import RedditService from "@tokenring-ai/reddit";
+import { RedditConfigSchema } from "@tokenring-ai/reddit/schema";
+
 const reddit = new RedditService(RedditConfigSchema.parse({}));
 
 // Get latest posts with pagination
@@ -399,15 +410,16 @@ for (const post of posts.data.children) {
 ### Service Configuration
 
 ```typescript
+import RedditService from "@tokenring-ai/reddit";
+import { RedditConfigSchema } from "@tokenring-ai/reddit/schema";
+
 // Default configuration (uses https://www.reddit.com)
-const reddit = new RedditService({
-  baseUrl: "https://www.reddit.com"
-});
+const reddit = new RedditService(RedditConfigSchema.parse({}));
 
 // Custom base URL
-const customReddit = new RedditService({
+const customReddit = new RedditService(RedditConfigSchema.parse({
   baseUrl: "https://custom.reddit.com"
-});
+}));
 ```
 
 ### Request Headers
@@ -457,6 +469,24 @@ scriptingService.registerFunction("searchSubreddit", {
   params: ['subreddit', 'query'],
   async execute(this: ScriptingThis, subreddit: string, query: string): Promise<string> {
     const result = await this.agent.requireServiceByType(RedditService).searchSubreddit(subreddit, query);
+    return JSON.stringify(result.data.children);
+  }
+});
+
+scriptingService.registerFunction("getRedditPost", {
+  type: 'native',
+  params: ['url'],
+  async execute(this: ScriptingThis, url: string): Promise<string> {
+    const result = await this.agent.requireServiceByType(RedditService).retrievePost(url);
+    return JSON.stringify(result);
+  }
+});
+
+scriptingService.registerFunction("getLatestPosts", {
+  type: 'native',
+  params: ['subreddit'],
+  async execute(this: ScriptingThis, subreddit: string): Promise<string> {
+    const result = await this.agent.requireServiceByType(RedditService).getLatestPosts(subreddit);
     return JSON.stringify(result.data.children);
   }
 });

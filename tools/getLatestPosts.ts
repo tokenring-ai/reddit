@@ -22,7 +22,7 @@ async function execute(
     throw new Error(`[${name}] subreddit is required`);
   }
 
-  agent.infoMessage(`[redditLatestPosts] Getting latest posts from r/${subreddit}`);
+  agent.infoMessage(`[${name}] Getting latest posts from r/${subreddit}`);
   const posts = await reddit.getLatestPosts(subreddit, {
     limit,
     after,

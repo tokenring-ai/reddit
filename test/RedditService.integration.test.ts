@@ -1,15 +1,15 @@
 import {describe, expect, it, vi, beforeEach} from "vitest";
-import RedditService from "../RedditService.js";
-import {RedditConfigSchema} from "../schema.js";
+import RedditService from "../RedditService.ts";
+import {RedditConfigSchema} from "../schema.ts";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
 import createTestingApp from "@tokenring-ai/app/test/createTestingApp";
 import createTestingAgent from "@tokenring-ai/agent/test/createTestingAgent";
 import {ChatService} from "@tokenring-ai/chat";
 import {ChatServiceConfigSchema} from "@tokenring-ai/chat/schema";
-import plugin from "../plugin.js";
-import searchSubredditTool from "../tools/searchSubreddit.js";
-import retrievePostTool from "../tools/retrievePost.js";
-import getLatestPostsTool from "../tools/getLatestPosts.js";
+import plugin from "../plugin.ts";
+import searchSubredditTool from "../tools/searchSubreddit.ts";
+import retrievePostTool from "../tools/retrievePost.ts";
+import getLatestPostsTool from "../tools/getLatestPosts.ts";
 
 // Mock HTTP calls
 vi.mock("@tokenring-ai/utility/http/doFetchWithRetry", () => ({

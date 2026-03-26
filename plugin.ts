@@ -4,7 +4,7 @@ import {ScriptingService} from "@tokenring-ai/scripting";
 import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService";
 import {z} from "zod";
 import packageJSON from './package.json' with {type: 'json'};
-import RedditService from "./RedditService.js";
+import RedditService from "./RedditService.ts";
 import {RedditConfigSchema} from "./schema.ts";
 
 import tools from "./tools.ts";
