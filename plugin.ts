@@ -1,5 +1,6 @@
 import {TokenRingPlugin} from "@tokenring-ai/app";
 import {ChatService} from "@tokenring-ai/chat";
+import {SocialMediaConfigSchema, SocialMediaService} from "../social/index.ts";
 import {ScriptingService} from "@tokenring-ai/scripting";
 import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService";
 import {z} from "zod";
@@ -10,7 +11,8 @@ import {RedditConfigSchema} from "./schema.ts";
 import tools from "./tools.ts";
 
 const packageConfigSchema = z.object({
-  reddit: RedditConfigSchema.prefault({})
+  reddit: RedditConfigSchema.prefault({}),
+  social: SocialMediaConfigSchema.optional(),
 });
 
 export default {
@@ -52,6 +54,18 @@ export default {
     app.waitForService(ChatService, chatService =>
       chatService.addTools(tools)
     );
+
+    if (config.social) {
+      app.services.waitForItemByType(SocialMediaService, socialService => {
+        for (const name in config.social!.providers) {
+          const provider = config.social!.providers[name];
+          if (provider.type === "reddit") {
+            socialService.registerSocialMediaProvider(name, new RedditService(RedditConfigSchema.parse(provider)));
+          }
+        }
+      });
+    }
+
     app.addServices(new RedditService(config.reddit));
   },
   config: packageConfigSchema
