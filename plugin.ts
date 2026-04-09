@@ -2,12 +2,12 @@ import {TokenRingPlugin} from "@tokenring-ai/app";
 import {ChatService} from "@tokenring-ai/chat";
 import {ScriptingService} from "@tokenring-ai/scripting";
 import {ScriptingThis} from "@tokenring-ai/scripting/ScriptingService";
-import {SocialMediaService} from "../social/index.ts";
 import {z} from "zod";
+import {SocialMediaService} from "../social/index.ts";
 import packageJSON from "./package.json" with {type: "json"};
 import RedditService from "./RedditService.ts";
 import RedditSocialMediaProvider from "./RedditSocialMediaProvider.ts";
-import {RedditAccountSchema, RedditConfigSchema, type ParsedRedditAccount} from "./schema.ts";
+import {type ParsedRedditAccount, RedditAccountSchema, RedditConfigSchema} from "./schema.ts";
 import tools from "./tools.ts";
 
 const packageConfigSchema = z.object({

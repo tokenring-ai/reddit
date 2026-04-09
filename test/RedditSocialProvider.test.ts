@@ -1,5 +1,5 @@
-import {beforeEach, describe, expect, it, vi} from "vitest";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 import RedditService from "../RedditService.ts";
 import {RedditConfigSchema} from "../schema.ts";
 

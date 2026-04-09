@@ -1,7 +1,7 @@
 import {TokenRingService} from "@tokenring-ai/app/types";
-import type {SocialMediaPost} from "../social/index.ts";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
 import {HttpService} from "@tokenring-ai/utility/http/HttpService";
+import type {SocialMediaPost} from "../social/index.ts";
 import type {ParsedRedditAccount} from "./schema.ts";
 
 export type RedditSearchOptions = {

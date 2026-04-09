@@ -1,15 +1,9 @@
 import {Agent} from "@tokenring-ai/agent";
-import type {
-  CreateSocialMediaPostData,
-  SocialMediaAccount,
-  SocialMediaPost,
-  SocialMediaPostFilterOptions,
-  SocialMediaProvider,
-} from "../social/index.ts";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
 import {Buffer} from "node:buffer";
-import type {ParsedRedditAccount} from "./schema.ts";
+import type {CreateSocialMediaPostData, SocialMediaAccount, SocialMediaPost, SocialMediaPostFilterOptions, SocialMediaProvider,} from "../social/index.ts";
 import RedditService from "./RedditService.ts";
+import type {ParsedRedditAccount} from "./schema.ts";
 
 export default class RedditSocialMediaProvider implements SocialMediaProvider {
   description = "Reddit social media provider";
