@@ -1,5 +1,5 @@
-import Agent from "@tokenring-ai/agent/Agent";
-import {TokenRingToolDefinition, type TokenRingToolJSONResult} from "@tokenring-ai/chat/schema";
+import type Agent from "@tokenring-ai/agent/Agent";
+import type {TokenRingToolDefinition, TokenRingToolJSONResult,} from "@tokenring-ai/chat/schema";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
@@ -18,7 +18,6 @@ async function execute(
   }: z.output<typeof inputSchema>,
   agent: Agent,
 ): Promise<TokenRingToolJSONResult<{ results?: any }>> {
-  
   const reddit = agent.requireServiceByType(RedditService);
 
   if (!subreddit) {
@@ -39,22 +38,39 @@ async function execute(
   });
   return {
     type: "json",
-    data: {results}
+    data: {results},
   };
 }
 
-const description = "Search posts in a specific subreddit. Returns structured JSON with search results.";
+const description =
+  "Search posts in a specific subreddit. Returns structured JSON with search results.";
 
 const inputSchema = z.object({
   subreddit: z.string().min(1).describe("Subreddit name (without r/ prefix)"),
   query: z.string().min(1).describe("Search query"),
-  limit: z.number().int().positive().max(100).optional().describe("Number of results (1-100, default: 25)"),
-  sort: z.enum(['relevance', 'hot', 'top', 'new', 'comments']).optional().describe("Sort order (default: relevance)"),
-  t: z.enum(['hour', 'day', 'week', 'month', 'year', 'all']).optional().describe("Time period for top/hot sorting"),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(100)
+    .optional()
+    .describe("Number of results (1-100, default: 25)"),
+  sort: z
+    .enum(["relevance", "hot", "top", "new", "comments"])
+    .optional()
+    .describe("Sort order (default: relevance)"),
+  t: z
+    .enum(["hour", "day", "week", "month", "year", "all"])
+    .optional()
+    .describe("Time period for top/hot sorting"),
   after: z.string().optional().describe("Fullname of a thing for pagination"),
   before: z.string().optional().describe("Fullname of a thing for pagination"),
 });
 
 export default {
-  name, displayName, description, inputSchema, execute,
+  name,
+  displayName,
+  description,
+  inputSchema,
+  execute,
 } satisfies TokenRingToolDefinition<typeof inputSchema>;

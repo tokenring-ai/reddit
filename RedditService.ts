@@ -1,4 +1,4 @@
-import {TokenRingService} from "@tokenring-ai/app/types";
+import type {TokenRingService} from "@tokenring-ai/app/types";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
 import {HttpService} from "@tokenring-ai/utility/http/HttpService";
 import type {SocialMediaPost} from "../social/index.ts";
@@ -18,14 +18,21 @@ export type RedditListingOptions = {
   before?: string;
 };
 
-export default class RedditService extends HttpService implements TokenRingService {
+export default class RedditService
+  extends HttpService
+  implements TokenRingService {
   readonly name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
 
   protected baseUrl: string;
   protected defaultHeaders: Record<string, string>;
 
-  constructor(private readonly config: Pick<ParsedRedditAccount, "publicBaseUrl" | "userAgent">) {
+  constructor(
+    private readonly config: Pick<
+      ParsedRedditAccount,
+      "publicBaseUrl" | "userAgent"
+    >,
+  ) {
     super();
     this.baseUrl = config.publicBaseUrl;
     this.defaultHeaders = {
@@ -33,7 +40,11 @@ export default class RedditService extends HttpService implements TokenRingServi
     };
   }
 
-  async searchSubreddit(subreddit: string, query: string, opts: RedditSearchOptions = {}): Promise<any> {
+  searchSubreddit(
+    subreddit: string,
+    query: string,
+    opts: RedditSearchOptions = {},
+  ): Promise<any> {
     if (!subreddit) throw new Error("subreddit is required");
     if (!query) throw new Error("query is required");
 
@@ -48,7 +59,11 @@ export default class RedditService extends HttpService implements TokenRingServi
       ...(opts.before && {before: opts.before}),
     });
 
-    return this.fetchJson(`/r/${subreddit}/search.json?${params}`, {method: "GET"}, "Reddit search");
+    return this.fetchJson(
+      `/r/${subreddit}/search.json?${params}`,
+      {method: "GET"},
+      "Reddit search",
+    );
   }
 
   async retrievePost(postUrl: string): Promise<any> {
@@ -62,7 +77,10 @@ export default class RedditService extends HttpService implements TokenRingServi
     return this.parseJsonOrThrow(res, "Reddit post retrieval");
   }
 
-  async getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<any> {
+  getLatestPosts(
+    subreddit: string,
+    opts: RedditListingOptions = {},
+  ): Promise<any> {
     if (!subreddit) throw new Error("subreddit is required");
 
     const params = new URLSearchParams({
@@ -72,13 +90,19 @@ export default class RedditService extends HttpService implements TokenRingServi
       ...(opts.before && {before: opts.before}),
     });
 
-    return this.fetchJson(`/r/${subreddit}/new.json?${params}`, {method: "GET"}, "Reddit latest posts");
+    return this.fetchJson(
+      `/r/${subreddit}/new.json?${params}`,
+      {method: "GET"},
+      "Reddit latest posts",
+    );
   }
 
   mapRedditThingToPost(post: any, username?: string): SocialMediaPost {
     const id = String(post.id ?? "").replace(/^t3_/, "");
     const resolvedUsername: string = post.author ?? username ?? "unknown";
-    const createdAt = post.created_utc ? new Date(post.created_utc * 1000) : new Date();
+    const createdAt = post.created_utc
+      ? new Date(post.created_utc * 1000)
+      : new Date();
     const linkUrl = post.is_self ? undefined : post.url;
 
     return {
@@ -87,9 +111,14 @@ export default class RedditService extends HttpService implements TokenRingServi
       title: post.title ?? undefined,
       content: post.selftext || linkUrl || "",
       status: "published",
-      url: post.permalink ? `https://www.reddit.com${post.permalink}` : post.url,
+      url: post.permalink
+        ? `https://www.reddit.com${post.permalink}`
+        : post.url,
       author: {
-        id: typeof post.author_fullname === "string" ? post.author_fullname.replace(/^t2_/, "") : undefined,
+        id:
+          typeof post.author_fullname === "string"
+            ? post.author_fullname.replace(/^t2_/, "")
+            : undefined,
         username: resolvedUsername,
         url: `https://www.reddit.com/user/${resolvedUsername}`,
       },
@@ -108,5 +137,4 @@ export default class RedditService extends HttpService implements TokenRingServi
       },
     };
   }
-
 }
