@@ -1,5 +1,5 @@
 import type Agent from "@tokenring-ai/agent/Agent";
-import type {TokenRingToolDefinition, TokenRingToolJSONResult,} from "@tokenring-ai/chat/schema";
+import type {TokenRingToolDefinition, TokenRingToolResult} from "@tokenring-ai/chat/schema";
 import {z} from "zod";
 import RedditService from "../RedditService.ts";
 
@@ -17,7 +17,7 @@ async function execute(
     before,
   }: z.output<typeof inputSchema>,
   agent: Agent,
-): Promise<TokenRingToolJSONResult<{ results?: any }>> {
+): Promise<TokenRingToolResult> {
   const reddit = agent.requireServiceByType(RedditService);
 
   if (!subreddit) {
@@ -36,10 +36,7 @@ async function execute(
     after,
     before,
   });
-  return {
-    type: "json",
-    data: {results},
-  };
+  return JSON.stringify(results);
 }
 
 const description =

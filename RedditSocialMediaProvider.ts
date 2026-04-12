@@ -1,7 +1,7 @@
 import type {Agent} from "@tokenring-ai/agent";
 import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
 import {Buffer} from "node:buffer";
-import type {CreateSocialMediaPostData, SocialMediaAccount, SocialMediaPost, SocialMediaPostFilterOptions, SocialMediaProvider,} from "../social/index.ts";
+import type {CreateSocialMediaPostData, SocialMediaAccount, SocialMediaPost, SocialMediaPostFilterOptions, SocialMediaProvider} from "../social/index.ts";
 import type RedditService from "./RedditService.ts";
 import type {ParsedRedditAccount} from "./schema.ts";
 

@@ -189,6 +189,7 @@ async searchSubreddit(subreddit: string, query: string, opts?: RedditSearchOptio
 ```
 
 **Parameters:**
+
 - `subreddit` (string): Subreddit name without the r/ prefix
 - `query` (string): Search query string
 - `opts` (RedditSearchOptions, optional): Additional options for the search
@@ -214,6 +215,7 @@ async retrievePost(postUrl: string): Promise<any>
 ```
 
 **Parameters:**
+
 - `postUrl` (string): Full URL to the Reddit post
 
 **Returns**: Promise containing the post data and comments (as an array `[submission, comments]`)
@@ -233,6 +235,7 @@ async getLatestPosts(subreddit: string, opts?: RedditListingOptions): Promise<an
 ```
 
 **Parameters:**
+
 - `subreddit` (string): Subreddit name without the r/ prefix
 - `opts` (RedditListingOptions, optional): Additional options for the request
 
@@ -532,6 +535,7 @@ pkg/reddit/
 ### Dependencies
 
 **Runtime Dependencies:**
+
 - `@tokenring-ai/app`: TokenRing application framework
 - `@tokenring-ai/chat`: Chat service and tool system
 - `@tokenring-ai/agent`: Agent framework
@@ -540,6 +544,7 @@ pkg/reddit/
 - `zod`: Schema validation
 
 **Development Dependencies:**
+
 - `vitest`: Test runner
 - `@vitest/coverage-v8`: Test coverage reporting
 - `typescript`: TypeScript compiler (uses root tsconfig.json)

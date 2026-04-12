@@ -7,7 +7,7 @@ import {SocialMediaService} from "../social/index.ts";
 import packageJSON from "./package.json" with {type: "json"};
 import RedditService from "./RedditService.ts";
 import RedditSocialMediaProvider from "./RedditSocialMediaProvider.ts";
-import {type ParsedRedditAccount, RedditAccountSchema, RedditConfigSchema,} from "./schema.ts";
+import {type ParsedRedditAccount, RedditAccountSchema, RedditConfigSchema} from "./schema.ts";
 import tools from "./tools.ts";
 
 const packageConfigSchema = z.object({
