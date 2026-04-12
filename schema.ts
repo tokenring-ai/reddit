@@ -29,6 +29,3 @@ export const RedditConfigSchema = z.object({
 });
 
 export type ParsedRedditConfig = z.output<typeof RedditConfigSchema>;
-
-// Keep for backwards compat with RedditService constructor
-export const RedditServiceConfigSchema = RedditAccountSchema;
