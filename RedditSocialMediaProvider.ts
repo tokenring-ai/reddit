@@ -140,7 +140,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
 
   private async authFetchJson(
     path: string,
-    opts: RequestInit,
+    opts: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
     context: string,
   ): Promise<any> {
     const token = await this.getAccessToken();
