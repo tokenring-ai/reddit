@@ -92,7 +92,7 @@ export default {
     );
 
     app.waitForService(ChatService, (chatService) =>
-      chatService.addTools(tools),
+      chatService.addTools(...tools),
     );
 
     const [, defaultAccount] = Object.entries(config.reddit.accounts)[0];

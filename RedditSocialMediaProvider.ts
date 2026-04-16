@@ -149,7 +149,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       headers: {
         "User-Agent": this.config.userAgent,
         Authorization: `Bearer ${token}`,
-        ...(opts.headers ?? {}),
+        ...opts.headers,
       },
     });
     if (!res.ok)
