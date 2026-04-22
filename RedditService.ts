@@ -1,6 +1,6 @@
 import type { TokenRingService } from "@tokenring-ai/app/types";
-import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
-import { HttpService } from "@tokenring-ai/utility/http/HttpService";
+import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
+import { z } from "zod";
 import type { SocialMediaPost } from "../social/index.ts";
 import type { ParsedRedditAccount } from "./schema.ts";
 
@@ -18,22 +18,41 @@ export type RedditListingOptions = {
   before?: string | undefined;
 };
 
-export default class RedditService extends HttpService implements TokenRingService {
+const RedditPostDataSchema = z.record(z.string(), z.unknown());
+
+const RedditThingSchema = z
+  .object({
+    data: RedditPostDataSchema,
+  })
+  .passthrough();
+
+const RedditListingResponseSchema = z
+  .object({
+    data: z
+      .object({
+        children: z.array(RedditThingSchema).default([]),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+export type RedditListingResponse = z.output<typeof RedditListingResponseSchema>;
+
+export default class RedditService implements TokenRingService {
   readonly name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
 
-  protected baseUrl: string;
-  protected defaultHeaders: Record<string, string>;
+  private readonly retriever: HTTPRetriever;
 
   constructor(private readonly config: Pick<ParsedRedditAccount, "publicBaseUrl" | "userAgent">) {
-    super();
-    this.baseUrl = config.publicBaseUrl;
-    this.defaultHeaders = {
-      "User-Agent": config.userAgent,
-    };
+    this.retriever = new HTTPRetriever({
+      baseUrl: config.publicBaseUrl,
+      headers: { "User-Agent": config.userAgent },
+      timeout: 10_000,
+    });
   }
 
-  searchSubreddit(subreddit: string, query: string, opts: RedditSearchOptions = {}): Promise<any> {
+  searchSubreddit(subreddit: string, query: string, opts: RedditSearchOptions = {}): Promise<RedditListingResponse> {
     if (!subreddit) throw new Error("subreddit is required");
     if (!query) throw new Error("query is required");
 
@@ -48,21 +67,25 @@ export default class RedditService extends HttpService implements TokenRingServi
       ...(opts.before && { before: opts.before }),
     });
 
-    return this.fetchJson(`/r/${subreddit}/search.json?${params}`, { method: "GET" }, "Reddit search");
+    return this.retriever.fetchValidatedJson({
+      url: `/r/${subreddit}/search.json?${params}`,
+      opts: { method: "GET" },
+      schema: RedditListingResponseSchema,
+      context: "Reddit search",
+    });
   }
 
-  async retrievePost(postUrl: string): Promise<any> {
+  async retrievePost(postUrl: string) {
     if (!postUrl) throw new Error("postUrl is required");
 
     const jsonUrl = postUrl.endsWith(".json") ? postUrl : `${postUrl}.json`;
-    const res = await doFetchWithRetry(jsonUrl, {
-      method: "GET",
-      headers: this.defaultHeaders,
+    return this.retriever.fetchJson({
+      url: jsonUrl,
+      context: "Reddit post retrieval",
     });
-    return this.parseJsonOrThrow(res, "Reddit post retrieval");
   }
 
-  getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<any> {
+  getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<RedditListingResponse> {
     if (!subreddit) throw new Error("subreddit is required");
 
     const params = new URLSearchParams({
@@ -72,7 +95,12 @@ export default class RedditService extends HttpService implements TokenRingServi
       ...(opts.before && { before: opts.before }),
     });
 
-    return this.fetchJson(`/r/${subreddit}/new.json?${params}`, { method: "GET" }, "Reddit latest posts");
+    return this.retriever.fetchValidatedJson({
+      url: `/r/${subreddit}/new.json?${params}`,
+      opts: { method: "GET" },
+      schema: RedditListingResponseSchema,
+      context: "Reddit latest posts",
+    });
   }
 
   mapRedditThingToPost(post: any, username?: string): SocialMediaPost {
