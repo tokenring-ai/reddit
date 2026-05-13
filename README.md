@@ -2,7 +2,9 @@
 
 ## Overview
 
-A Reddit integration service for TokenRing AI, providing access to Reddit's JSON API for searching subreddits, retrieving posts, and monitoring latest content. This package enables AI agents to interact with Reddit in a structured, type-safe manner.
+A Reddit integration service for TokenRing AI, providing access to Reddit's JSON API for searching subreddits,
+retrieving posts, and monitoring latest content. This package enables AI agents to interact with Reddit in a structured,
+type-safe manner.
 
 ## Key Features
 
@@ -12,7 +14,8 @@ A Reddit integration service for TokenRing AI, providing access to Reddit's JSON
 - **Type-Safe Configuration**: Zod schema validation for all inputs
 - **Plugin Architecture**: Automatic registration with TokenRing applications
 - **Scripting Support**: Global functions for programmatic access
-- **Chat Tools Integration**: Three tools registered with the chat service (`reddit_searchSubreddit`, `reddit_retrievePost`, `reddit_getLatestPosts`)
+- **Chat Tools Integration**: Three tools registered with the chat service (`reddit_searchSubreddit`,
+  `reddit_retrievePost`, `reddit_getLatestPosts`)
 - **Compliant User-Agent**: Automatic User-Agent header for Reddit API compliance
 
 ## Installation
@@ -154,7 +157,8 @@ const posts = await agent.executeTool("reddit_getLatestPosts", {
 
 ### RedditService
 
-Core service for Reddit API interactions. This service implements `TokenRingService` and extends the `HttpService` base class to handle HTTP requests with retry logic and automatic JSON parsing.
+Core service for Reddit API interactions. This service implements `TokenRingService` and extends the `HttpService` base
+class to handle HTTP requests with retry logic and automatic JSON parsing.
 
 **Service Definition:**
 
@@ -162,10 +166,13 @@ Core service for Reddit API interactions. This service implements `TokenRingServ
 class RedditService extends HttpService implements TokenRingService {
   readonly name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
-  
+
   constructor(config: ParsedRedditConfig);
+
   async searchSubreddit(subreddit: string, query: string, opts?: RedditSearchOptions): Promise<any>;
+
   async retrievePost(postUrl: string): Promise<any>;
+
   async getLatestPosts(subreddit: string, opts?: RedditListingOptions): Promise<any>;
 }
 ```

@@ -1,7 +1,7 @@
-import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import RedditService from "../RedditService.ts";
-import {RedditConfigSchema} from "../schema.ts";
+import { RedditConfigSchema } from "../schema.ts";
 
 vi.mock("@tokenring-ai/utility/http/doFetchWithRetry", () => ({
   doFetchWithRetry: vi.fn(),
@@ -83,7 +83,7 @@ describe("RedditService social provider behavior", () => {
       accessToken: "secret",
     }));
 
-    const posts = await reddit.getRecentPosts({limit: 5}, mockAgent);
+    const posts = await reddit.getRecentPosts({ limit: 5 }, mockAgent);
 
     expect(posts).toHaveLength(1);
     expect(posts[0].id).toBe("abc123");

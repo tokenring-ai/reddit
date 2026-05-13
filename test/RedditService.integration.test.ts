@@ -1,10 +1,10 @@
 import createTestingAgent from "@tokenring-ai/agent/test/createTestingAgent";
 import createTestingApp from "@tokenring-ai/app/test/createTestingApp";
-import {doFetchWithRetry} from "@tokenring-ai/utility/http/doFetchWithRetry";
-import {beforeEach, describe, expect, it, vi} from "vitest";
+import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../plugin.ts";
 import RedditService from "../RedditService.ts";
-import {RedditConfigSchema} from "../schema.ts";
+import { RedditConfigSchema } from "../schema.ts";
 import getLatestPostsTool from "../tools/getLatestPosts.ts";
 import retrievePostTool from "../tools/retrievePost.ts";
 import searchSubredditTool from "../tools/searchSubreddit.ts";
@@ -19,7 +19,7 @@ describe("RedditService Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Create a mock successful response for search/latest posts
     mockResponse = {
       ok: true,
@@ -64,7 +64,7 @@ describe("RedditService Integration Tests", () => {
     expect(result.data.children).toBeInstanceOf(Array);
     expect(result.data.children.length).toBeGreaterThan(0);
     expect(result.data.children[0].data).toHaveProperty("title");
-    
+
     // Verify HTTP call was made
     expect(doFetchWithRetry).toHaveBeenCalled();
   });
@@ -99,7 +99,7 @@ describe("RedditService Integration Tests", () => {
     const reddit = new RedditService(RedditConfigSchema.parse({}));
     // Using a well-known Reddit post URL for testing
     const postUrl = "https://www.reddit.com/r/announcements/comments/5q4qmg/out_with_2016_in_with_2017/";
-    
+
     // Mock response for retrievePost - Reddit returns an array with [submission, comments]
     const postMockResponse = {
       ok: true,
@@ -122,15 +122,15 @@ describe("RedditService Integration Tests", () => {
         }
       ])),
     };
-    
+
     vi.mocked(doFetchWithRetry).mockResolvedValue(postMockResponse);
-    
+
     const content = await reddit.retrievePost(postUrl);
 
     expect(content).toBeDefined();
     expect(Array.isArray(content)).toBe(true);
     expect(content[0].data.children[0].data).toHaveProperty("title");
-    
+
     // Verify the URL was called with .json extension
     expect(doFetchWithRetry).toHaveBeenCalledWith(
       expect.stringContaining(".json"),
@@ -175,7 +175,7 @@ describe("RedditService Integration Tests", () => {
     vi.mocked(doFetchWithRetry).mockResolvedValue(mockErrorResponse as any);
 
     const reddit = new RedditService(RedditConfigSchema.parse({}));
-    
+
     await expect(reddit.searchSubreddit("programming", "test"))
       .rejects
       .toThrow("Reddit search failed (500)");
@@ -191,7 +191,7 @@ describe("RedditService Integration Tests", () => {
     vi.mocked(doFetchWithRetry).mockResolvedValue(mockInvalidJsonResponse as any);
 
     const reddit = new RedditService(RedditConfigSchema.parse({}));
-    
+
     // Invalid JSON is caught silently and returns empty object
     const result = await reddit.searchSubreddit("programming", "test");
     expect(result).toEqual({});
@@ -200,7 +200,7 @@ describe("RedditService Integration Tests", () => {
   it("should use custom baseUrl when configured", async () => {
     const customBaseUrl = "https://custom-reddit.example.com";
     const reddit = new RedditService(RedditConfigSchema.parse({ baseUrl: customBaseUrl }));
-    
+
     // The baseUrl should be set correctly
     expect(reddit).toBeDefined();
     // Note: We can't directly access protected baseUrl, but we can verify it's used
@@ -209,7 +209,7 @@ describe("RedditService Integration Tests", () => {
 
   it("should have correct service name and description", () => {
     const reddit = new RedditService(RedditConfigSchema.parse({}));
-    
+
     expect(reddit.name).toBe("RedditService");
     expect(reddit.description).toBe("Service for searching Reddit posts and retrieving content");
   });
@@ -221,25 +221,25 @@ describe("Reddit Tools Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     const app = createTestingApp();
     mockAgent = createTestingAgent(app);
-    
+
     // Mock infoMessage
-    vi.spyOn(mockAgent, 'infoMessage').mockResolvedValue(undefined);
-    
+    vi.spyOn(mockAgent, "infoMessage").mockResolvedValue(undefined);
+
     // Create mock RedditService
     mockRedditService = {
       searchSubreddit: vi.fn(),
       retrievePost: vi.fn(),
       getLatestPosts: vi.fn(),
     };
-    
+
     // Add mock RedditService to app
     app.addServices(mockRedditService);
-    
+
     // Spy on requireServiceByType
-    vi.spyOn(mockAgent, 'requireServiceByType').mockReturnValue(mockRedditService);
+    vi.spyOn(mockAgent, "requireServiceByType").mockReturnValue(mockRedditService);
   });
 
   it("should have correct tool metadata for searchSubreddit", () => {
@@ -349,31 +349,31 @@ describe("Reddit Plugin Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     mockApp = createTestingApp();
-    
+
     // Track addServices calls
     const originalAddServices = mockApp.addServices;
     addServicesSpy = vi.fn();
     mockApp.addServices = addServicesSpy;
-    
+
     // Create mock ChatService
     mockChatService = {
       addTools: vi.fn(),
     };
-    
+
     // Create mock ScriptingService
     mockScriptingService = {
       registerFunction: vi.fn(),
     };
-    
+
     // Mock waitForItemByType for ScriptingService - call callback immediately
     mockApp.services = {
       waitForItemByType: vi.fn().mockImplementation((serviceType, callback) => {
         callback(mockScriptingService);
       }),
     };
-    
+
     // Mock waitForService for ChatService - call callback immediately
     mockApp.waitForService = vi.fn().mockImplementation((serviceType, callback) => {
       callback(mockChatService);
@@ -384,17 +384,17 @@ describe("Reddit Plugin Tests", () => {
     const config = {
       reddit: RedditConfigSchema.parse({}),
     };
-    
+
     plugin.install(mockApp, config as any);
-    
+
     // Verify RedditService was registered with default config
     expect(addServicesSpy).toHaveBeenCalled();
     const redditService = addServicesSpy.mock.calls[0][0];
     expect(redditService).toBeInstanceOf(RedditService);
-    
+
     // Verify tools were added
     expect(mockChatService.addTools).toHaveBeenCalled();
-    
+
     // Verify scripting functions were registered
     expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("searchSubreddit", expect.any(Object));
     expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("getRedditPost", expect.any(Object));
@@ -407,17 +407,17 @@ describe("Reddit Plugin Tests", () => {
         baseUrl: "https://custom-reddit.example.com",
       }),
     };
-    
+
     plugin.install(mockApp, config as any);
-    
+
     // Verify RedditService was registered
     expect(addServicesSpy).toHaveBeenCalled();
     const redditService = addServicesSpy.mock.calls[0][0];
     expect(redditService).toBeInstanceOf(RedditService);
-    
+
     // Verify tools were added
     expect(mockChatService.addTools).toHaveBeenCalled();
-    
+
     // Verify scripting functions were registered
     expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("searchSubreddit", expect.any(Object));
     expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("getRedditPost", expect.any(Object));

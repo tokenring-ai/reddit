@@ -83,12 +83,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       limit: String(Math.min(filter.limit ?? 10, 100)),
       raw_json: "1",
     });
-    const response = await this.authFetchJson(
-      `/user/${account.username}/submitted?${params}`,
-      { method: "GET" },
-      "Reddit account posts",
-      RedditListingSchema,
-    );
+    const response = await this.authFetchJson(`/user/${account.username}/submitted?${params}`, { method: "GET" }, "Reddit account posts", RedditListingSchema);
     return (response.data?.children ?? []).map((child: any) => this.reddit.mapRedditThingToPost(child.data, account.username));
   }
 
