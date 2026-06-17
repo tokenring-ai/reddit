@@ -2,7 +2,7 @@ import type { TokenRingService } from "@tokenring-ai/app/types";
 import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
 import { z } from "zod";
 import type { SocialMediaPost } from "../social/index.ts";
-import type { ParsedRedditAccount } from "./schema.ts";
+import { type ParsedRedditAccount, RedditListingResponseSchema, RedditThingSchema } from "./schema.ts";
 
 export type RedditSearchOptions = {
   limit?: number | undefined;
@@ -18,26 +18,6 @@ export type RedditListingOptions = {
   before?: string | undefined;
 };
 
-const RedditPostDataSchema = z.record(z.string(), z.unknown());
-
-const RedditThingSchema = z
-  .object({
-    data: RedditPostDataSchema,
-  })
-  .passthrough();
-
-const RedditListingResponseSchema = z
-  .object({
-    data: z
-      .object({
-        children: z.array(RedditThingSchema).default([]),
-      })
-      .passthrough(),
-  })
-  .passthrough();
-
-export type RedditListingResponse = z.output<typeof RedditListingResponseSchema>;
-
 export default class RedditService implements TokenRingService {
   readonly name = "RedditService";
   description = "Service for searching Reddit posts and retrieving content";
@@ -52,7 +32,7 @@ export default class RedditService implements TokenRingService {
     });
   }
 
-  searchSubreddit(subreddit: string, query: string, opts: RedditSearchOptions = {}): Promise<RedditListingResponse> {
+  searchSubreddit(subreddit: string, query: string, opts: RedditSearchOptions = {}): Promise<z.output<typeof RedditListingResponseSchema>> {
     if (!subreddit) throw new Error("subreddit is required");
     if (!query) throw new Error("query is required");
 
@@ -85,7 +65,7 @@ export default class RedditService implements TokenRingService {
     });
   }
 
-  getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<RedditListingResponse> {
+  getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<z.output<typeof RedditListingResponseSchema>> {
     if (!subreddit) throw new Error("subreddit is required");
 
     const params = new URLSearchParams({
@@ -103,7 +83,7 @@ export default class RedditService implements TokenRingService {
     });
   }
 
-  mapRedditThingToPost(post: any, username?: string): SocialMediaPost {
+  mapRedditThingToPost(post: z.output<typeof RedditThingSchema>["data"], username?: string): SocialMediaPost {
     const id = String(post.id ?? "").replace(/^t3_/, "");
     const resolvedUsername: string = post.author ?? username ?? "unknown";
     const createdAt = post.created_utc ? new Date(post.created_utc * 1000) : new Date();
@@ -117,7 +97,9 @@ export default class RedditService implements TokenRingService {
       status: "published",
       url: post.permalink ? `https://www.reddit.com${post.permalink}` : post.url,
       author: {
-        id: typeof post.author_fullname === "string" ? post.author_fullname.replace(/^t2_/, "") : undefined,
+        ...(typeof post.author_fullname === "string" && {
+          id: post.author_fullname.replace(/^t2_/, "")
+        }),
         username: resolvedUsername,
         url: `https://www.reddit.com/user/${resolvedUsername}`,
       },
@@ -127,8 +109,12 @@ export default class RedditService implements TokenRingService {
         attachments: [{ type: "link", url: linkUrl }],
       }),
       metrics: {
-        comments: post.num_comments,
-        score: post.score,
+        ...(post.num_comments && {
+          comments: post.num_comments,
+        }),
+        ...(post.score && {
+          score: post.score,
+        })
       },
       metadata: {
         subreddit: post.subreddit,

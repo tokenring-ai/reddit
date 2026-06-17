@@ -1,28 +1,11 @@
-import { Buffer } from "node:buffer";
 import type { Agent } from "@tokenring-ai/agent";
-import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
+import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
 import { stripUndefinedKeys } from "@tokenring-ai/utility/object/stripObject";
+import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type { CreateSocialMediaPostData, SocialMediaAccount, SocialMediaPost, SocialMediaPostFilterOptions, SocialMediaProvider } from "../social/index.ts";
 import type RedditService from "./RedditService.ts";
-import type { ParsedRedditAccount } from "./schema.ts";
-
-const RedditThingSchema = z
-  .object({
-    data: z.record(z.string(), z.unknown()),
-  })
-  .passthrough();
-
-const RedditListingSchema = z
-  .object({
-    data: z
-      .object({
-        children: z.array(RedditThingSchema).optional(),
-      })
-      .passthrough()
-      .optional(),
-  })
-  .passthrough();
+import { type ParsedRedditAccount, RedditAccessTokenSchema, RedditListingResponseSchema } from "./schema.ts";
 
 const RedditCreatePostResponseSchema = z
   .object({
@@ -33,13 +16,13 @@ const RedditCreatePostResponseSchema = z
           .object({
             id: z.string().optional(),
           })
-          .passthrough()
+
           .optional(),
       })
-      .passthrough()
+
       .optional(),
   })
-  .passthrough();
+;
 
 const RedditAccountResponseSchema = z
   .object({
@@ -55,21 +38,28 @@ const RedditAccountResponseSchema = z
         description: z.string().optional(),
         icon_img: z.string().optional(),
       })
-      .passthrough()
+
       .optional(),
   })
-  .passthrough();
+;
 
 export default class RedditSocialMediaProvider implements SocialMediaProvider {
   description = "Reddit social media provider";
   private accessToken?: string | undefined;
   private accountPromise?: Promise<SocialMediaAccount>;
 
+  private readonly retriever: HTTPRetriever;
+
   constructor(
     private readonly reddit: RedditService,
     private readonly config: ParsedRedditAccount,
   ) {
     this.accessToken = config.accessToken;
+    this.retriever = new HTTPRetriever({
+      baseUrl: config.oauthBaseUrl,
+      headers: { "User-Agent": config.userAgent },
+      timeout: 10_000,
+    });
   }
 
   getAccount(_agent: Agent): Promise<SocialMediaAccount> {
@@ -83,19 +73,32 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       limit: String(Math.min(filter.limit ?? 10, 100)),
       raw_json: "1",
     });
-    const response = await this.authFetchJson(`/user/${account.username}/submitted?${params}`, { method: "GET" }, "Reddit account posts", RedditListingSchema);
-    return (response.data?.children ?? []).map((child: any) => this.reddit.mapRedditThingToPost(child.data, account.username));
+    const token = await this.getAccessToken();
+    const response = await this.retriever.fetchValidatedJson({
+      url: `/user/${account.username}/submitted?${params}`,
+      opts: {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      schema: RedditListingResponseSchema,
+      context: "Reddit account posts",
+    });
+    return response.data.children.map((child) => this.reddit.mapRedditThingToPost(child.data, account.username));
   }
 
   async getPostById(id: string, _agent: Agent): Promise<SocialMediaPost> {
     if (!id) throw new Error("id is required");
     const fullname = id.startsWith("t3_") ? id : `t3_${id}`;
-    const response = await this.authFetchJson(
-      `/api/info?id=${encodeURIComponent(fullname)}&raw_json=1`,
-      { method: "GET" },
-      "Reddit post lookup",
-      RedditListingSchema,
-    );
+    const token = await this.getAccessToken();
+    const response = await this.retriever.fetchValidatedJson({
+      url: `/api/info?id=${encodeURIComponent(fullname)}&raw_json=1`,
+      opts: {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      schema: RedditListingResponseSchema,
+      context: "Reddit post lookup",
+    });
     const post = response.data?.children?.[0]?.data;
     if (!post) throw new Error(`Reddit post ${id} not found`);
     return this.reddit.mapRedditThingToPost(post);
@@ -125,16 +128,20 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       body.set("text", data.content);
     }
 
-    const response = await this.authFetchJson(
-      "/api/submit",
-      {
+    const token = await this.getAccessToken();
+    const response = await this.retriever.fetchValidatedJson({
+      url: "/api/submit",
+      opts: {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Bearer ${token}`,
+        },
         body: body.toString(),
       },
-      "Reddit create post",
-      RedditCreatePostResponseSchema,
-    );
+      schema: RedditCreatePostResponseSchema,
+      context: "Reddit create post",
+    });
 
     const errors = response.json?.errors ?? [];
     if (errors.length > 0) throw new Error(`Reddit create post failed: ${JSON.stringify(errors)}`);
@@ -145,7 +152,16 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
   }
 
   private async fetchAccount(): Promise<SocialMediaAccount> {
-    const response = await this.authFetchJson("/api/v1/me", { method: "GET" }, "Reddit current account lookup", RedditAccountResponseSchema);
+    const token = await this.getAccessToken();
+    const response = await this.retriever.fetchValidatedJson({
+      url: "/api/v1/me",
+      opts: {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      schema: RedditAccountResponseSchema,
+      context: "Reddit current account lookup",
+    });
     const username = response.name ?? this.config.username;
     if (!username) throw new Error("Reddit account lookup did not return a username");
     return stripUndefinedKeys({
@@ -159,25 +175,6 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
     });
   }
 
-  private async authFetchJson<T extends z.ZodType>(
-    path: string,
-    opts: Omit<RequestInit, "headers"> & { headers?: Record<string, string> },
-    context: string,
-    schema: T,
-  ): Promise<z.output<T>> {
-    const token = await this.getAccessToken();
-    const res = await doFetchWithRetry(`${this.config.oauthBaseUrl}${path}`, {
-      ...opts,
-      headers: {
-        "User-Agent": this.config.userAgent,
-        Authorization: `Bearer ${token}`,
-        ...opts.headers,
-      },
-    });
-    if (!res.ok) throw new Error(`${context} failed: ${res.status} ${res.statusText}`);
-    return schema.parse(await res.json());
-  }
-
   private async getAccessToken(): Promise<string> {
     if (this.accessToken) return this.accessToken;
     if (!this.config.refreshToken || !this.config.clientId || !this.config.clientSecret) {
@@ -188,19 +185,22 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       grant_type: "refresh_token",
       refresh_token: this.config.refreshToken,
     });
-    const res = await doFetchWithRetry(`${this.config.publicBaseUrl}/api/v1/access_token`, {
-      method: "POST",
-      headers: {
-        "User-Agent": this.config.userAgent,
-        Authorization: `Basic ${credentials}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+
+    const { access_token } = await this.retriever.fetchValidatedJson({
+      url: `${this.config.publicBaseUrl}/api/v1/access_token`,
+      opts: {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
       },
-      body: body.toString(),
+      schema: RedditAccessTokenSchema,
+      context: "Reddit token refresh",
     });
-    if (!res.ok) throw new Error(`Reddit token refresh failed: ${res.status}`);
-    const data = await res.json();
-    if (!data.access_token) throw new Error("Reddit token refresh did not return an access token");
-    this.accessToken = data.access_token;
-    return data.access_token;
+
+    this.accessToken = access_token;
+    return access_token;
   }
 }

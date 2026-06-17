@@ -13,14 +13,9 @@ async function execute({ postUrl }: z.output<typeof inputSchema>, agent: Agent):
     throw new Error(`[${name}] postUrl is required`);
   }
 
-  try {
-    agent.infoMessage(`[redditRetrievePost] Retrieving: ${postUrl}`);
-    const post = await reddit.retrievePost(postUrl);
-    return JSON.stringify(post);
-  } catch (e: any) {
-    const message = e?.message || String(e);
-    throw new Error(`[${name}] ${message}`);
-  }
+  agent.infoMessage(`[redditRetrievePost] Retrieving: ${postUrl}`);
+  const post = await reddit.retrievePost(postUrl);
+  return JSON.stringify(post);
 }
 
 const description = "Retrieve a Reddit post's content and comments by URL.";
