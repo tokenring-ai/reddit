@@ -4,12 +4,14 @@ export const RedditAccessTokenSchema = z.object({
   access_token: z.string(),
 });
 
-export const RedditFlairRichtextSchema = z.object({
-  e: z.string().optional(),
-  t: z.string().optional(),
-  a: z.string().optional(),
-  u: z.string().optional(),
-}).loose();
+export const RedditFlairRichtextSchema = z
+  .object({
+    e: z.string().optional(),
+    t: z.string().optional(),
+    a: z.string().optional(),
+    u: z.string().optional(),
+  })
+  .loose();
 
 export const RedditThingDataSchema = z.object({
   // Identity
@@ -147,22 +149,17 @@ export const RedditThingSchema = z.object({
   data: RedditThingDataSchema,
 });
 
-export const RedditListingResponseSchema = z
-  .object({
-    data: z
-      .object({
-        children: z.array(RedditThingSchema).default([]),
-      })
-      .prefault({}),
-  })
-;
+export const RedditListingResponseSchema = z.object({
+  data: z
+    .object({
+      children: z.array(RedditThingSchema).default([]),
+    })
+    .prefault({}),
+});
 
 export const RedditAccountSchema = z
   .object({
-    baseUrl: z.string().exactOptional(),
-    publicBaseUrl: z.string().exactOptional(),
     oauthBaseUrl: z.string().default("https://oauth.reddit.com"),
-    userAgent: z.string().default("TokenRing/1.0 (https://github.com/tokenring-ai/monorepo)"),
     accessToken: z.string().exactOptional(),
     refreshToken: z.string().exactOptional(),
     clientId: z.string().exactOptional(),
@@ -170,15 +167,13 @@ export const RedditAccountSchema = z
     username: z.string().exactOptional(),
     defaultSubreddit: z.string().exactOptional(),
     social: z.boolean().exactOptional(),
-  })
-  .transform(config => ({
-    ...config,
-    publicBaseUrl: config.publicBaseUrl ?? config.baseUrl ?? "https://www.reddit.com",
-  }));
+  });
 
 export type ParsedRedditAccount = z.output<typeof RedditAccountSchema>;
 
 export const RedditConfigSchema = z.object({
+  baseUrl: z.string().exactOptional().default("https://www.reddit.com"),
+  userAgent: z.string().default("TokenRing/1.0 (https://github.com/tokenring-ai/monorepo)"),
   accounts: z.record(z.string(), RedditAccountSchema).default({}),
 });
 

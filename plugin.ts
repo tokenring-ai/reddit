@@ -75,9 +75,7 @@ export default {
 
     app.waitForService(ChatService, chatService => chatService.addTools(...tools));
 
-    const [, defaultAccount] = Object.entries(config.reddit.accounts)[0];
-    const parsedDefault = RedditAccountSchema.parse(defaultAccount);
-    const redditService = new RedditService(parsedDefault);
+    const redditService = new RedditService(config.reddit);
     app.addServices(redditService);
 
     app.services.waitForItemByType(SocialMediaService, socialService => {

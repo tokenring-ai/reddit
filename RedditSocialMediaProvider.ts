@@ -7,41 +7,37 @@ import type { CreateSocialMediaPostData, SocialMediaAccount, SocialMediaPost, So
 import type RedditService from "./RedditService.ts";
 import { type ParsedRedditAccount, RedditAccessTokenSchema, RedditListingResponseSchema } from "./schema.ts";
 
-const RedditCreatePostResponseSchema = z
-  .object({
-    json: z
-      .object({
-        errors: z.array(z.unknown()).optional(),
-        data: z
-          .object({
-            id: z.string().optional(),
-          })
+const RedditCreatePostResponseSchema = z.object({
+  json: z
+    .object({
+      errors: z.array(z.unknown()).optional(),
+      data: z
+        .object({
+          id: z.string().optional(),
+        })
 
-          .optional(),
-      })
+        .optional(),
+    })
 
-      .optional(),
-  })
-;
+    .optional(),
+});
 
-const RedditAccountResponseSchema = z
-  .object({
-    id: z.union([z.string(), z.number()]),
-    name: z.string().optional(),
-    icon_img: z.string().optional(),
-    snoovatar_img: z.string().optional(),
-    has_verified_email: z.boolean().optional(),
-    subreddit: z
-      .object({
-        title: z.string().optional(),
-        public_description: z.string().optional(),
-        description: z.string().optional(),
-        icon_img: z.string().optional(),
-      })
+const RedditAccountResponseSchema = z.object({
+  id: z.union([z.string(), z.number()]),
+  name: z.string().optional(),
+  icon_img: z.string().optional(),
+  snoovatar_img: z.string().optional(),
+  has_verified_email: z.boolean().optional(),
+  subreddit: z
+    .object({
+      title: z.string().optional(),
+      public_description: z.string().optional(),
+      description: z.string().optional(),
+      icon_img: z.string().optional(),
+    })
 
-      .optional(),
-  })
-;
+    .optional(),
+});
 
 export default class RedditSocialMediaProvider implements SocialMediaProvider {
   description = "Reddit social media provider";
@@ -57,7 +53,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
     this.accessToken = config.accessToken;
     this.retriever = new HTTPRetriever({
       baseUrl: config.oauthBaseUrl,
-      headers: { "User-Agent": config.userAgent },
+      headers: { "User-Agent": reddit.config.userAgent },
       timeout: 10_000,
     });
   }
@@ -83,7 +79,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       schema: RedditListingResponseSchema,
       context: "Reddit account posts",
     });
-    return response.data.children.map((child) => this.reddit.mapRedditThingToPost(child.data, account.username));
+    return response.data.children.map(child => this.reddit.mapRedditThingToPost(child.data, account.username));
   }
 
   async getPostById(id: string, _agent: Agent): Promise<SocialMediaPost> {
@@ -99,7 +95,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       schema: RedditListingResponseSchema,
       context: "Reddit post lookup",
     });
-    const post = response.data?.children?.[0]?.data;
+    const post = response.data?.children[0]?.data;
     if (!post) throw new Error(`Reddit post ${id} not found`);
     return this.reddit.mapRedditThingToPost(post);
   }
@@ -187,7 +183,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
     });
 
     const { access_token } = await this.retriever.fetchValidatedJson({
-      url: `${this.config.publicBaseUrl}/api/v1/access_token`,
+      url: `${this.reddit.config.baseUrl}/api/v1/access_token`,
       opts: {
         method: "POST",
         headers: {

@@ -2,6 +2,7 @@ import type { TokenRingService } from "@tokenring-ai/app/types";
 import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
 import { z } from "zod";
 import type { SocialMediaPost } from "../social/index.ts";
+import type { ParsedRedditConfig } from "./schema.ts";
 import { type ParsedRedditAccount, RedditListingResponseSchema, RedditThingSchema } from "./schema.ts";
 
 export type RedditSearchOptions = {
@@ -24,9 +25,9 @@ export default class RedditService implements TokenRingService {
 
   private readonly retriever: HTTPRetriever;
 
-  constructor(private readonly config: Pick<ParsedRedditAccount, "publicBaseUrl" | "userAgent">) {
+  constructor(public readonly config: ParsedRedditConfig) {
     this.retriever = new HTTPRetriever({
-      baseUrl: config.publicBaseUrl,
+      baseUrl: config.baseUrl,
       headers: { "User-Agent": config.userAgent },
       timeout: 10_000,
     });
@@ -84,21 +85,21 @@ export default class RedditService implements TokenRingService {
   }
 
   mapRedditThingToPost(post: z.output<typeof RedditThingSchema>["data"], username?: string): SocialMediaPost {
-    const id = String(post.id ?? "").replace(/^t3_/, "");
-    const resolvedUsername: string = post.author ?? username ?? "unknown";
+    const id = String(post.id).replace(/^t3_/, "");
+    const resolvedUsername: string = post.author;
     const createdAt = post.created_utc ? new Date(post.created_utc * 1000) : new Date();
     const linkUrl = post.is_self ? undefined : post.url;
 
     return {
       id,
       platform: "reddit",
-      title: post.title ?? undefined,
+      title: post.title,
       content: post.selftext || linkUrl || "",
       status: "published",
       url: post.permalink ? `https://www.reddit.com${post.permalink}` : post.url,
       author: {
         ...(typeof post.author_fullname === "string" && {
-          id: post.author_fullname.replace(/^t2_/, "")
+          id: post.author_fullname.replace(/^t2_/, ""),
         }),
         username: resolvedUsername,
         url: `https://www.reddit.com/user/${resolvedUsername}`,
@@ -114,7 +115,7 @@ export default class RedditService implements TokenRingService {
         }),
         ...(post.score && {
           score: post.score,
-        })
+        }),
       },
       metadata: {
         subreddit: post.subreddit,
