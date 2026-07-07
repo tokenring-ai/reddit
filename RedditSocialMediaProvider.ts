@@ -1,7 +1,7 @@
+import { Buffer } from "node:buffer";
 import type { Agent } from "@tokenring-ai/agent";
 import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
 import { stripUndefinedKeys } from "@tokenring-ai/utility/object/stripObject";
-import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type { CreateSocialMediaPostData, SocialMediaAccount, SocialMediaPost, SocialMediaPostFilterOptions, SocialMediaProvider } from "../social/index.ts";
 import type RedditService from "./RedditService.ts";
@@ -79,7 +79,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       schema: RedditListingResponseSchema,
       context: "Reddit account posts",
     });
-    return response.data.children.map(child => this.reddit.mapRedditThingToPost(child.data, account.username));
+    return response.data.children.map(child => this.reddit.mapRedditThingToPost(child.data));
   }
 
   async getPostById(id: string, _agent: Agent): Promise<SocialMediaPost> {
@@ -95,7 +95,7 @@ export default class RedditSocialMediaProvider implements SocialMediaProvider {
       schema: RedditListingResponseSchema,
       context: "Reddit post lookup",
     });
-    const post = response.data?.children[0]?.data;
+    const post = response.data.children[0]?.data;
     if (!post) throw new Error(`Reddit post ${id} not found`);
     return this.reddit.mapRedditThingToPost(post);
   }

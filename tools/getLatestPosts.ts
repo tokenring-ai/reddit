@@ -1,5 +1,6 @@
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { TokenRingToolDefinition, TokenRingToolResult } from "@tokenring-ai/chat/schema";
+import { ToolCallError } from "@tokenring-ai/chat/util/tokenRingTool";
 import { z } from "zod";
 import RedditService from "../RedditService.ts";
 
@@ -10,7 +11,7 @@ async function execute({ subreddit, limit, after, before }: z.output<typeof inpu
   const reddit = agent.requireServiceByType(RedditService);
 
   if (!subreddit) {
-    throw new Error(`[${name}] subreddit is required`);
+    throw new ToolCallError(name, `subreddit is required`);
   }
 
   agent.infoMessage(`[${name}] Getting latest posts from r/${subreddit}`);

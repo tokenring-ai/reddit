@@ -1,5 +1,6 @@
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { TokenRingToolDefinition, TokenRingToolResult } from "@tokenring-ai/chat/schema";
+import { ToolCallError } from "@tokenring-ai/chat/util/tokenRingTool";
 import { stripUndefinedKeys } from "@tokenring-ai/utility/object/stripObject";
 import { z } from "zod";
 import RedditService from "../RedditService.ts";
@@ -11,11 +12,11 @@ async function execute({ subreddit, query, limit, sort, t, after, before }: z.ou
   const reddit = agent.requireServiceByType(RedditService);
 
   if (!subreddit) {
-    throw new Error(`[${name}] subreddit is required`);
+    throw new ToolCallError(name, `subreddit is required`);
   }
 
   if (!query) {
-    throw new Error(`[${name}] query is required`);
+    throw new ToolCallError(name, `query is required`);
   }
 
   agent.infoMessage(`[${name}] Searching r/${subreddit} for: ${query}`);

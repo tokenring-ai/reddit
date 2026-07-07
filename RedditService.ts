@@ -1,9 +1,9 @@
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
-import { z } from "zod";
+import type { z } from "zod";
 import type { SocialMediaPost } from "../social/index.ts";
 import type { ParsedRedditConfig } from "./schema.ts";
-import { type ParsedRedditAccount, RedditListingResponseSchema, RedditThingSchema } from "./schema.ts";
+import { RedditListingResponseSchema, type RedditThingSchema } from "./schema.ts";
 
 export type RedditSearchOptions = {
   limit?: number | undefined;
@@ -84,7 +84,7 @@ export default class RedditService implements TokenRingService {
     });
   }
 
-  mapRedditThingToPost(post: z.output<typeof RedditThingSchema>["data"], username?: string): SocialMediaPost {
+  mapRedditThingToPost(post: z.output<typeof RedditThingSchema>["data"]): SocialMediaPost {
     const id = String(post.id).replace(/^t3_/, "");
     const resolvedUsername: string = post.author;
     const createdAt = post.created_utc ? new Date(post.created_utc * 1000) : new Date();

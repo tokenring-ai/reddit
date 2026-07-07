@@ -1,5 +1,6 @@
 import type Agent from "@tokenring-ai/agent/Agent";
 import type { TokenRingToolDefinition, TokenRingToolResult } from "@tokenring-ai/chat/schema";
+import { ToolCallError } from "@tokenring-ai/chat/util/tokenRingTool";
 import { z } from "zod";
 import RedditService from "../RedditService.ts";
 
@@ -10,7 +11,7 @@ async function execute({ postUrl }: z.output<typeof inputSchema>, agent: Agent):
   const reddit = agent.requireServiceByType(RedditService);
 
   if (!postUrl) {
-    throw new Error(`[${name}] postUrl is required`);
+    throw new ToolCallError(name, `postUrl is required`);
   }
 
   agent.infoMessage(`[redditRetrievePost] Retrieving: ${postUrl}`);

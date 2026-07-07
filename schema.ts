@@ -157,17 +157,16 @@ export const RedditListingResponseSchema = z.object({
     .prefault({}),
 });
 
-export const RedditAccountSchema = z
-  .object({
-    oauthBaseUrl: z.string().default("https://oauth.reddit.com"),
-    accessToken: z.string().exactOptional(),
-    refreshToken: z.string().exactOptional(),
-    clientId: z.string().exactOptional(),
-    clientSecret: z.string().exactOptional(),
-    username: z.string().exactOptional(),
-    defaultSubreddit: z.string().exactOptional(),
-    social: z.boolean().exactOptional(),
-  });
+export const RedditAccountSchema = z.object({
+  oauthBaseUrl: z.string().default("https://oauth.reddit.com"),
+  accessToken: z.string().exactOptional(),
+  refreshToken: z.string().exactOptional(),
+  clientId: z.string().exactOptional(),
+  clientSecret: z.string().exactOptional(),
+  username: z.string().exactOptional(),
+  defaultSubreddit: z.string().exactOptional(),
+  social: z.boolean().exactOptional(),
+});
 
 export type ParsedRedditAccount = z.output<typeof RedditAccountSchema>;
 
