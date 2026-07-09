@@ -1,7 +1,8 @@
 import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import RedditService from "../RedditService.ts";
-import { RedditConfigSchema } from "../schema.ts";
+import RedditSocialMediaProvider from "../RedditSocialMediaProvider.ts";
+import { RedditAccountSchema, RedditConfigSchema } from "../schema.ts";
 
 vi.mock("@tokenring-ai/utility/http/doFetchWithRetry", () => ({
   doFetchWithRetry: vi.fn(),
@@ -33,11 +34,12 @@ describe("RedditService social provider behavior", () => {
       },
     }));
 
-    const reddit = new RedditService(RedditConfigSchema.parse({
+    const reddit = new RedditService(RedditConfigSchema.parse({}));
+    const provider = new RedditSocialMediaProvider(reddit, RedditAccountSchema.parse({
       accessToken: "secret",
     }));
 
-    const account = await reddit.getAccount(mockAgent);
+    const account = await provider.getAccount(mockAgent);
 
     expect(account.username).toBe("tokenring");
     expect(account.url).toBe("https://www.reddit.com/user/tokenring");
@@ -79,16 +81,17 @@ describe("RedditService social provider behavior", () => {
         },
       }));
 
-    const reddit = new RedditService(RedditConfigSchema.parse({
+    const reddit = new RedditService(RedditConfigSchema.parse({}));
+    const provider = new RedditSocialMediaProvider(reddit, RedditAccountSchema.parse({
       accessToken: "secret",
     }));
 
-    const posts = await reddit.getRecentPosts({ limit: 5 }, mockAgent);
+    const posts = await provider.getRecentPosts({ limit: 5 }, mockAgent);
 
     expect(posts).toHaveLength(1);
-    expect(posts[0].id).toBe("abc123");
-    expect(posts[0].title).toBe("Hello Reddit");
-    expect(posts[0].metrics?.score).toBe(10);
+    expect(posts[0]!.id).toBe("abc123");
+    expect(posts[0]!.title).toBe("Hello Reddit");
+    expect(posts[0]!.metrics?.score).toBe(10);
     expect(doFetchWithRetry).toHaveBeenLastCalledWith(
       expect.stringContaining("/user/tokenring/submitted?limit=5"),
       expect.any(Object),
@@ -127,11 +130,12 @@ describe("RedditService social provider behavior", () => {
         },
       }));
 
-    const reddit = new RedditService(RedditConfigSchema.parse({
+    const reddit = new RedditService(RedditConfigSchema.parse({}));
+    const provider = new RedditSocialMediaProvider(reddit, RedditAccountSchema.parse({
       accessToken: "secret",
     }));
 
-    const post = await reddit.createPost({
+    const post = await provider.createPost({
       title: "Hello Reddit",
       content: "Body",
       metadata: {
@@ -160,13 +164,14 @@ describe("RedditService social provider behavior", () => {
         name: "tokenring",
       }));
 
-    const reddit = new RedditService(RedditConfigSchema.parse({
+    const reddit = new RedditService(RedditConfigSchema.parse({}));
+    const provider = new RedditSocialMediaProvider(reddit, RedditAccountSchema.parse({
       clientId: "client",
       clientSecret: "secret",
       refreshToken: "refresh-token",
     }));
 
-    const account = await reddit.getAccount(mockAgent);
+    const account = await provider.getAccount(mockAgent);
 
     expect(account.username).toBe("tokenring");
     expect(doFetchWithRetry).toHaveBeenNthCalledWith(

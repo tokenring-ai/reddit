@@ -63,7 +63,7 @@ describe("RedditService Integration Tests", () => {
     expect(result.data).toBeDefined();
     expect(result.data.children).toBeInstanceOf(Array);
     expect(result.data.children.length).toBeGreaterThan(0);
-    expect(result.data.children[0].data).toHaveProperty("title");
+    expect(result.data.children[0]!.data).toHaveProperty("title");
 
     // Verify HTTP call was made
     expect(doFetchWithRetry).toHaveBeenCalled();
@@ -121,15 +121,15 @@ describe("RedditService Integration Tests", () => {
           }
         }
       ])),
-    };
+    } as unknown as Response;
 
     vi.mocked(doFetchWithRetry).mockResolvedValue(postMockResponse);
 
-    const content = await reddit.retrievePost(postUrl);
+    const content = (await reddit.retrievePost(postUrl)) as Array<{ data: { children: Array<{ data: any }> } }>;
 
     expect(content).toBeDefined();
     expect(Array.isArray(content)).toBe(true);
-    expect(content[0].data.children[0].data).toHaveProperty("title");
+    expect(content[0]!.data.children[0]!.data).toHaveProperty("title");
 
     // Verify the URL was called with .json extension
     expect(doFetchWithRetry).toHaveBeenCalledWith(
@@ -155,7 +155,7 @@ describe("RedditService Integration Tests", () => {
     expect(result.data).toBeDefined();
     expect(result.data.children).toBeInstanceOf(Array);
     expect(result.data.children.length).toBeGreaterThan(0);
-    expect(result.data.children[0].data).toHaveProperty("title");
+    expect(result.data.children[0]!.data).toHaveProperty("title");
   });
 
   it("should throw error for empty subreddit in getLatestPosts", async () => {
@@ -278,8 +278,7 @@ describe("Reddit Tools Tests", () => {
       "javascript",
       expect.objectContaining({ limit: 10 })
     );
-    expect(result.type).toBe("json");
-    expect(result.data.results).toEqual(mockResults);
+    expect(JSON.parse(result as string)).toEqual(mockResults);
   });
 
   it("should throw error when subreddit is missing in searchSubreddit tool", async () => {
@@ -307,8 +306,7 @@ describe("Reddit Tools Tests", () => {
     expect(mockRedditService.retrievePost).toHaveBeenCalledWith(
       "https://www.reddit.com/r/test/comments/123/test/"
     );
-    expect(result.type).toBe("json");
-    expect(result.data.post).toEqual(mockPost);
+    expect(JSON.parse(result as string)).toEqual(mockPost);
   });
 
   it("should throw error when postUrl is missing in retrievePost tool", async () => {
@@ -330,8 +328,7 @@ describe("Reddit Tools Tests", () => {
       "programming",
       expect.objectContaining({ limit: 20 })
     );
-    expect(result.type).toBe("json");
-    expect(result.data.posts).toEqual(mockPosts);
+    expect(JSON.parse(result as string)).toEqual(mockPosts);
   });
 
   it("should throw error when subreddit is missing in getLatestPosts tool", async () => {
