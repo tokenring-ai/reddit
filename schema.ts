@@ -159,10 +159,10 @@ export const RedditListingResponseSchema = z.object({
 
 export const RedditAccountSchema = z.object({
   oauthBaseUrl: z.string().default("https://oauth.reddit.com"),
-  accessToken: z.string().exactOptional(),
-  refreshToken: z.string().exactOptional(),
-  clientId: z.string().exactOptional(),
-  clientSecret: z.string().exactOptional(),
+  accessToken: z.string().exactOptional().meta({ sensitive: true, description: "OAuth access token" }),
+  refreshToken: z.string().exactOptional().meta({ sensitive: true, description: "OAuth refresh token" }),
+  clientId: z.string().exactOptional().meta({ description: "Reddit app client ID" }),
+  clientSecret: z.string().exactOptional().meta({ sensitive: true, description: "Reddit app client secret" }),
   username: z.string().exactOptional(),
   defaultSubreddit: z.string().exactOptional(),
   social: z.boolean().exactOptional(),
