@@ -8,7 +8,7 @@ const name = "reddit_getLatestPosts";
 const displayName = "Reddit/getLatestPosts";
 
 async function execute({ subreddit, limit, after, before }: z.output<typeof inputSchema>, agent: Agent): Promise<TokenRingToolResult> {
-  const reddit = agent.requireServiceByType(RedditService);
+  const reddit = agent.requireService(RedditService);
 
   if (!subreddit) {
     throw new ToolCallError(name, `subreddit is required`);
@@ -20,7 +20,10 @@ async function execute({ subreddit, limit, after, before }: z.output<typeof inpu
     after,
     before,
   });
-  return JSON.stringify(posts);
+  return {
+    message: `Latest posts from r/${subreddit}`,
+    result: JSON.stringify(posts),
+  };
 }
 
 const description = "Get the latest posts from a subreddit. Returns newest posts in chronological order.";

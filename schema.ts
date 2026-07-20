@@ -1,8 +1,110 @@
-import { z } from "zod";
+import type { ConfigFieldMeta } from "@tokenring-ai/app/config/metadata";
+import { secret } from "@tokenring-ai/secrets/secret";
+import z from "zod";
 
+/** OAuth token endpoint response. */
 export const RedditAccessTokenSchema = z.object({
   access_token: z.string(),
+  expires_in: z.number().optional(),
+  scope: z.string().optional(),
+  token_type: z.string().optional(),
 });
+
+/**
+ * A Reddit account used as a messaging transport. What the account *does* — who
+ * may talk to it, which subreddits it watches, which agent answers — is
+ * configured on the bot that uses it, in the `bot` plugin.
+ *
+ * Provide either a ready `accessToken`, or `refreshToken` + `clientId` +
+ * `clientSecret` so the provider can refresh OAuth tokens itself.
+ */
+export const RedditAccountConfigSchema = z.object({
+  accessToken: secret({ description: "OAuth access token (Bearer)" }).exactOptional(),
+  refreshToken: secret({ description: "OAuth refresh token" }).exactOptional(),
+  clientId: z
+    .string()
+    .exactOptional()
+    .meta({ description: "Reddit app client ID" } satisfies ConfigFieldMeta),
+  clientSecret: secret({ description: "Reddit app client secret" }).exactOptional(),
+  oauthBaseUrl: z
+    .string()
+    .default("https://oauth.reddit.com")
+    .meta({ advanced: true, description: "Reddit OAuth API base URL" } satisfies ConfigFieldMeta),
+  tokenUrl: z
+    .string()
+    .default("https://www.reddit.com/api/v1/access_token")
+    .meta({ advanced: true, description: "OAuth token endpoint" } satisfies ConfigFieldMeta),
+  userAgent: z
+    .string()
+    .default("TokenRing-One/1.0 (https://github.com/tokenring-ai/one)")
+    .meta({
+      advanced: true,
+      description: "User-Agent sent with Reddit API requests (Reddit requires a descriptive UA)",
+    } satisfies ConfigFieldMeta),
+  pollIntervalMs: z
+    .number()
+    .int()
+    .min(10_000)
+    .default(30_000)
+    .meta({
+      advanced: true,
+      description: "How often, in milliseconds, to poll the inbox for new messages and comment replies",
+    } satisfies ConfigFieldMeta),
+  maxMessageLength: z
+    .number()
+    .int()
+    .min(1)
+    .max(10_000)
+    .default(10_000)
+    .meta({ advanced: true, description: "Longest single comment or PM the account will send" } satisfies ConfigFieldMeta),
+  markRead: z
+    .boolean()
+    .default(true)
+    .meta({ advanced: true, description: "Mark inbox items as read after delivering them to a bot" } satisfies ConfigFieldMeta),
+});
+
+export type ParsedRedditAccountConfig = z.output<typeof RedditAccountConfigSchema>;
+
+/**
+ * Account as handed to the service, with secret refs resolved to plain strings.
+ * Optional credentials stay optional (unlike {@link WithResolvedSecrets}, which
+ * would force every listed key to be present).
+ */
+export type ResolvedRedditAccountConfig = Omit<ParsedRedditAccountConfig, "accessToken" | "refreshToken" | "clientSecret"> & {
+  accessToken?: string;
+  refreshToken?: string;
+  clientSecret?: string;
+};
+
+export const RedditServiceConfigSchema = z
+  .object({
+    accounts: z
+      .record(z.string(), RedditAccountConfigSchema)
+      .default({})
+      .meta({ label: "Accounts", description: "Reddit accounts, keyed by the service name bots address them by" } satisfies ConfigFieldMeta),
+    publicBaseUrl: z
+      .string()
+      .default("https://www.reddit.com")
+      .meta({
+        advanced: true,
+        description: "Public Reddit base URL used by research tools (search, latest posts)",
+      } satisfies ConfigFieldMeta),
+    userAgent: z
+      .string()
+      .default("TokenRing-One/1.0 (https://github.com/tokenring-ai/one)")
+      .meta({ advanced: true, description: "Default User-Agent for public (unauthenticated) API calls" } satisfies ConfigFieldMeta),
+  })
+  .meta({ label: "Reddit", description: "Reddit accounts for bot messaging and research tools" } satisfies ConfigFieldMeta);
+
+export type ParsedRedditServiceConfig = z.output<typeof RedditServiceConfigSchema>;
+
+export type ResolvedRedditServiceConfig = {
+  accounts: Record<string, ResolvedRedditAccountConfig>;
+  publicBaseUrl: string;
+  userAgent: string;
+};
+
+// --- Listing schemas used by research tools and validated OAuth responses ---
 
 export const RedditFlairRichtextSchema = z
   .object({
@@ -13,167 +115,89 @@ export const RedditFlairRichtextSchema = z
   })
   .loose();
 
-export const RedditThingDataSchema = z.object({
-  // Identity
-  id: z.string(),
-  name: z.string(),
-  permalink: z.string(),
-  url: z.string(),
-  domain: z.string().optional(),
+export const RedditThingDataSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    permalink: z.string().optional(),
+    url: z.string().optional(),
+    subreddit: z.string().optional(),
+    author: z.string().optional(),
+    author_fullname: z.string().optional(),
+    title: z.string().optional(),
+    selftext: z.string().optional(),
+    body: z.string().optional(),
+    subject: z.string().optional(),
+    is_self: z.boolean().optional(),
+    score: z.number().optional(),
+    num_comments: z.number().optional(),
+    created_utc: z.number().optional(),
+    link_id: z.string().optional(),
+    parent_id: z.string().optional(),
+    was_comment: z.boolean().optional(),
+    new: z.boolean().optional(),
+    dest: z.string().optional(),
+    likes: z.boolean().nullable().optional(),
+    upvote_ratio: z.number().optional(),
+  })
+  .loose();
 
-  // Subreddit
-  subreddit: z.string(),
-  subreddit_id: z.string().optional(),
-  subreddit_name_prefixed: z.string().optional(),
-  subreddit_type: z.string().optional(),
-  subreddit_subscribers: z.number().optional(),
+export const RedditThingSchema = z
+  .object({
+    kind: z.string().optional(),
+    data: RedditThingDataSchema,
+  })
+  .loose();
 
-  // Author
-  author: z.string(),
-  author_fullname: z.string().optional(),
-  author_premium: z.boolean().optional(),
-  author_is_blocked: z.boolean().optional(),
-  author_patreon_flair: z.boolean().optional(),
-  author_flair_type: z.string().nullable().optional(),
-  author_flair_text: z.string().nullable().optional(),
-  author_flair_css_class: z.string().nullable().optional(),
-  author_flair_richtext: z.array(RedditFlairRichtextSchema).optional(),
-  author_flair_background_color: z.string().nullable().optional(),
-  author_flair_text_color: z.string().nullable().optional(),
-  author_flair_template_id: z.string().nullable().optional(),
+export const RedditListingResponseSchema = z
+  .object({
+    data: z
+      .object({
+        children: z.array(RedditThingSchema).default([]),
+        after: z.string().nullable().optional(),
+        before: z.string().nullable().optional(),
+      })
+      .prefault({}),
+  })
+  .loose();
 
-  // Content
-  title: z.string(),
-  selftext: z.string().optional(),
-  selftext_html: z.string().nullable().optional(),
-  is_self: z.boolean().optional(),
-  is_video: z.boolean().optional(),
-  is_original_content: z.boolean().optional(),
-  is_reddit_media_domain: z.boolean().optional(),
-  is_meta: z.boolean().optional(),
-  is_crosspostable: z.boolean().optional(),
-  is_robot_indexable: z.boolean().optional(),
-  is_created_from_ads_ui: z.boolean().optional(),
-  media_only: z.boolean().optional(),
-  over_18: z.boolean().optional(),
-  spoiler: z.boolean().optional(),
-  locked: z.boolean().optional(),
-  hidden: z.boolean().optional(),
-  pinned: z.boolean().optional(),
-  stickied: z.boolean().optional(),
-  archived: z.boolean().optional(),
-  quarantine: z.boolean().optional(),
-  clicked: z.boolean().optional(),
-  visited: z.boolean().optional(),
-  saved: z.boolean().optional(),
+export const RedditMeSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    name: z.string(),
+    icon_img: z.string().optional(),
+    snoovatar_img: z.string().optional(),
+  })
+  .loose();
 
-  // Thumbnails / media
-  thumbnail: z.string().optional(),
-  thumbnail_width: z.number().nullable().optional(),
-  thumbnail_height: z.number().nullable().optional(),
-  media: z.unknown().nullable().optional(),
-  media_embed: z.record(z.string(), z.unknown()).optional(),
-  secure_media: z.unknown().nullable().optional(),
-  secure_media_embed: z.record(z.string(), z.unknown()).optional(),
-
-  // Link flair
-  link_flair_text: z.string().nullable().optional(),
-  link_flair_type: z.string().optional(),
-  link_flair_css_class: z.string().nullable().optional(),
-  link_flair_richtext: z.array(RedditFlairRichtextSchema).optional(),
-  link_flair_background_color: z.string().nullable().optional(),
-  link_flair_text_color: z.string().nullable().optional(),
-  link_flair_template_id: z.string().optional(),
-
-  // Scoring
-  score: z.number().optional(),
-  ups: z.number().optional(),
-  downs: z.number().optional(),
-  upvote_ratio: z.number().optional(),
-  hide_score: z.boolean().optional(),
-  likes: z.boolean().nullable().optional(),
-
-  // Comments / engagement
-  num_comments: z.number().optional(),
-  num_crossposts: z.number().optional(),
-  num_reports: z.number().nullable().optional(),
-  view_count: z.number().nullable().optional(),
-  allow_live_comments: z.boolean().optional(),
-  send_replies: z.boolean().optional(),
-  suggested_sort: z.string().nullable().optional(),
-  discussion_type: z.string().nullable().optional(),
-  contest_mode: z.boolean().optional(),
-
-  // Awards / gilding
-  gilded: z.number().optional(),
-  gildings: z.record(z.string(), z.unknown()).optional(),
-  total_awards_received: z.number().optional(),
-  all_awardings: z.array(z.unknown()).optional(),
-  awarders: z.array(z.unknown()).optional(),
-  top_awarded_type: z.string().nullable().optional(),
-  can_gild: z.boolean().optional(),
-
-  // Moderation
-  approved_at_utc: z.number().nullable().optional(),
-  approved_by: z.string().nullable().optional(),
-  banned_at_utc: z.number().nullable().optional(),
-  banned_by: z.string().nullable().optional(),
-  removed_by: z.string().nullable().optional(),
-  removed_by_category: z.string().nullable().optional(),
-  removal_reason: z.string().nullable().optional(),
-  mod_reason_title: z.string().nullable().optional(),
-  mod_reason_by: z.string().nullable().optional(),
-  mod_note: z.string().nullable().optional(),
-  mod_reports: z.array(z.unknown()).optional(),
-  user_reports: z.array(z.unknown()).optional(),
-  report_reasons: z.array(z.unknown()).nullable().optional(),
-  can_mod_post: z.boolean().optional(),
-  distinguished: z.string().nullable().optional(),
-
-  // Timestamps
-  created: z.number().optional(),
-  created_utc: z.number().optional(),
-  edited: z.union([z.number(), z.boolean()]).optional(),
-
-  // Misc
-  pwls: z.number().nullable().optional(),
-  wls: z.number().nullable().optional(),
-  category: z.string().nullable().optional(),
-  content_categories: z.array(z.string()).nullable().optional(),
-  treatment_tags: z.array(z.unknown()).optional(),
-  no_follow: z.boolean().optional(),
-});
-
-export const RedditThingSchema = z.object({
-  kind: z.string().optional(),
-  data: RedditThingDataSchema,
-});
-
-export const RedditListingResponseSchema = z.object({
-  data: z
-    .object({
-      children: z.array(RedditThingSchema).default([]),
-    })
-    .prefault({}),
-});
-
-export const RedditAccountSchema = z.object({
-  oauthBaseUrl: z.string().default("https://oauth.reddit.com"),
-  accessToken: z.string().exactOptional().meta({ sensitive: true, description: "OAuth access token" }),
-  refreshToken: z.string().exactOptional().meta({ sensitive: true, description: "OAuth refresh token" }),
-  clientId: z.string().exactOptional().meta({ description: "Reddit app client ID" }),
-  clientSecret: z.string().exactOptional().meta({ sensitive: true, description: "Reddit app client secret" }),
-  username: z.string().exactOptional(),
-  defaultSubreddit: z.string().exactOptional(),
-  social: z.boolean().exactOptional(),
-});
-
-export type ParsedRedditAccount = z.output<typeof RedditAccountSchema>;
-
-export const RedditConfigSchema = z.object({
-  baseUrl: z.string().exactOptional().default("https://www.reddit.com"),
-  userAgent: z.string().default("TokenRing/1.0 (https://github.com/tokenring-ai/monorepo)"),
-  accounts: z.record(z.string(), RedditAccountSchema).default({}),
-});
-
-export type ParsedRedditConfig = z.output<typeof RedditConfigSchema>;
+export const RedditJsonActionSchema = z
+  .object({
+    json: z
+      .object({
+        errors: z.array(z.unknown()).optional(),
+        data: z
+          .object({
+            id: z.string().optional(),
+            things: z
+              .array(
+                z
+                  .object({
+                    data: z
+                      .object({
+                        id: z.string().optional(),
+                        name: z.string().optional(),
+                      })
+                      .loose()
+                      .optional(),
+                  })
+                  .loose(),
+              )
+              .optional(),
+          })
+          .loose()
+          .optional(),
+      })
+      .loose()
+      .optional(),
+  })
+  .loose();

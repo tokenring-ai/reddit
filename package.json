@@ -1,17 +1,16 @@
 {
   "name": "@tokenring-ai/reddit",
+  "description": "Reddit transport for TokenRing bots, plus research tools.",
   "version": "0.2.0",
-  "description": "Reddit integration for Token Ring",
   "dependencies": {
     "@tokenring-ai/app": "workspace:*",
-    "@tokenring-ai/chat": "workspace:*",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
+    "@tokenring-ai/bot": "workspace:*",
+    "@tokenring-ai/chat": "workspace:*",
     "@tokenring-ai/scripting": "workspace:*",
+    "@tokenring-ai/secrets": "workspace:*",
     "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "typescript": "^6.0.2"
   },
   "exports": {
     ".": "./index.ts",
@@ -20,6 +19,9 @@
   "types": "./index.ts",
   "license": "MIT",
   "type": "module",
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  },
   "scripts": {
     "test": "bun test",
     "build": "tsc --noEmit",

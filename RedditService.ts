@@ -1,9 +1,12 @@
-import type { TokenRingService } from "@tokenring-ai/app/types";
+import type TokenRingApp from "@tokenring-ai/app";
+import { ConfigurationError, type TokenRingService } from "@tokenring-ai/app/types";
+import { BotService } from "@tokenring-ai/bot";
 import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
+import KeyedRegistry from "@tokenring-ai/utility/registry/KeyedRegistry";
+import { deepEquals } from "bun";
 import type { z } from "zod";
-import type { SocialMediaPost } from "../social/index.ts";
-import type { ParsedRedditConfig } from "./schema.ts";
-import { RedditListingResponseSchema, type RedditThingSchema } from "./schema.ts";
+import RedditMessagingProvider from "./RedditMessagingProvider.ts";
+import { RedditListingResponseSchema, type ResolvedRedditServiceConfig } from "./schema.ts";
 
 export type RedditSearchOptions = {
   limit?: number | undefined;
@@ -19,19 +22,82 @@ export type RedditListingOptions = {
   before?: string | undefined;
 };
 
+/**
+ * Connects configured Reddit accounts to the bot service, and exposes public
+ * research helpers (search / latest / retrieve) used by chat tools.
+ */
 export default class RedditService implements TokenRingService {
   readonly name = "RedditService";
-  description = "Service for searching Reddit posts and retrieving content";
+  description = "Connects Reddit accounts to the bot service and provides research tools.";
 
-  private readonly retriever: HTTPRetriever;
+  private providers = new KeyedRegistry<RedditMessagingProvider>();
+  private options: ResolvedRedditServiceConfig = {
+    accounts: {},
+    publicBaseUrl: "https://www.reddit.com",
+    userAgent: "TokenRing-One/1.0 (https://github.com/tokenring-ai/one)",
+  };
+  private publicRetriever: HTTPRetriever;
 
-  constructor(public readonly config: ParsedRedditConfig) {
-    this.retriever = new HTTPRetriever({
-      baseUrl: config.baseUrl,
-      headers: { "User-Agent": config.userAgent },
+  getAvailableAccounts = this.providers.keysArray;
+  getProvider = this.providers.get;
+
+  constructor(private app: TokenRingApp) {
+    this.publicRetriever = new HTTPRetriever({
+      baseUrl: this.options.publicBaseUrl,
+      headers: { "User-Agent": this.options.userAgent },
       timeout: 10_000,
     });
   }
+
+  async reconfigure(options: ResolvedRedditServiceConfig): Promise<void> {
+    this.publicRetriever = new HTTPRetriever({
+      baseUrl: options.publicBaseUrl,
+      headers: { "User-Agent": options.userAgent },
+      timeout: 10_000,
+    });
+
+    const botService = this.requireBotServiceIfNeeded(options);
+
+    await this.providers.reconcileAgainstAsync(options.accounts, {
+      creating: async (accountName, accountConfig) => {
+        this.app.serviceOutput(this, `Connecting Reddit account ${accountName}`);
+        const provider = new RedditMessagingProvider(this.app, this, accountName, accountConfig);
+        await provider.start();
+        botService!.registerProvider(accountName, provider);
+        return provider;
+      },
+      deleting: async (accountName, provider) => {
+        this.app.serviceOutput(this, `Stopping Reddit account ${accountName}`);
+        botService?.unregisterProvider(accountName);
+        await provider.stop();
+      },
+      updating: async (accountName, provider, accountConfig) => {
+        if (deepEquals(this.options.accounts[accountName], accountConfig, true)) return provider;
+
+        this.app.serviceOutput(this, `Reconnecting Reddit account ${accountName}`);
+        botService?.unregisterProvider(accountName);
+        await provider.stop();
+
+        const next = new RedditMessagingProvider(this.app, this, accountName, accountConfig);
+        await next.start();
+        botService!.registerProvider(accountName, next);
+        return next;
+      },
+    });
+
+    this.options = options;
+  }
+
+  async stop(): Promise<void> {
+    const botService = this.app.getService(BotService);
+    for (const [accountName, provider] of this.providers.entriesArray()) {
+      botService?.unregisterProvider(accountName);
+      await provider.stop();
+      this.providers.unregister(accountName);
+    }
+  }
+
+  // --- Research tools (public JSON API; no account required) ---
 
   searchSubreddit(subreddit: string, query: string, opts: RedditSearchOptions = {}): Promise<z.output<typeof RedditListingResponseSchema>> {
     if (!subreddit) throw new Error("subreddit is required");
@@ -48,7 +114,7 @@ export default class RedditService implements TokenRingService {
       ...(opts.before && { before: opts.before }),
     });
 
-    return this.retriever.fetchValidatedJson({
+    return this.publicRetriever.fetchValidatedJson({
       url: `/r/${subreddit}/search.json?${params}`,
       opts: { method: "GET" },
       schema: RedditListingResponseSchema,
@@ -58,9 +124,8 @@ export default class RedditService implements TokenRingService {
 
   async retrievePost(postUrl: string) {
     if (!postUrl) throw new Error("postUrl is required");
-
     const jsonUrl = postUrl.endsWith(".json") ? postUrl : `${postUrl}.json`;
-    return this.retriever.fetchJson({
+    return this.publicRetriever.fetchJson({
       url: jsonUrl,
       context: "Reddit post retrieval",
     });
@@ -76,7 +141,7 @@ export default class RedditService implements TokenRingService {
       ...(opts.before && { before: opts.before }),
     });
 
-    return this.retriever.fetchValidatedJson({
+    return this.publicRetriever.fetchValidatedJson({
       url: `/r/${subreddit}/new.json?${params}`,
       opts: { method: "GET" },
       schema: RedditListingResponseSchema,
@@ -84,45 +149,15 @@ export default class RedditService implements TokenRingService {
     });
   }
 
-  mapRedditThingToPost(post: z.output<typeof RedditThingSchema>["data"]): SocialMediaPost {
-    const id = String(post.id).replace(/^t3_/, "");
-    const resolvedUsername: string = post.author;
-    const createdAt = post.created_utc ? new Date(post.created_utc * 1000) : new Date();
-    const linkUrl = post.is_self ? undefined : post.url;
-
-    return {
-      id,
-      platform: "reddit",
-      title: post.title,
-      content: post.selftext || linkUrl || "",
-      status: "published",
-      url: post.permalink ? `https://www.reddit.com${post.permalink}` : post.url,
-      author: {
-        ...(typeof post.author_fullname === "string" && {
-          id: post.author_fullname.replace(/^t2_/, ""),
-        }),
-        username: resolvedUsername,
-        url: `https://www.reddit.com/user/${resolvedUsername}`,
-      },
-      createdAt,
-      publishedAt: createdAt,
-      ...(linkUrl && {
-        attachments: [{ type: "link", url: linkUrl }],
-      }),
-      metrics: {
-        ...(post.num_comments && {
-          comments: post.num_comments,
-        }),
-        ...(post.score && {
-          score: post.score,
-        }),
-      },
-      metadata: {
-        subreddit: post.subreddit,
-        fullname: post.name,
-        isSelf: post.is_self,
-        upvoteRatio: post.upvote_ratio,
-      },
-    };
+  private requireBotServiceIfNeeded(options: ResolvedRedditServiceConfig): BotService | undefined {
+    if (Object.keys(options.accounts).length === 0) return undefined;
+    const botService = this.app.getService(BotService);
+    if (!botService) {
+      throw new ConfigurationError(
+        this.name,
+        "Reddit accounts are configured but the @tokenring-ai/bot plugin is not installed, so there is nothing to connect them to",
+      );
+    }
+    return botService;
   }
 }

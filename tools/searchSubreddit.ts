@@ -9,7 +9,7 @@ const name = "reddit_searchSubreddit";
 const displayName = "Reddit/searchSubreddit";
 
 async function execute({ subreddit, query, limit, sort, t, after, before }: z.output<typeof inputSchema>, agent: Agent): Promise<TokenRingToolResult> {
-  const reddit = agent.requireServiceByType(RedditService);
+  const reddit = agent.requireService(RedditService);
 
   if (!subreddit) {
     throw new ToolCallError(name, `subreddit is required`);
@@ -31,7 +31,10 @@ async function execute({ subreddit, query, limit, sort, t, after, before }: z.ou
       before,
     }),
   );
-  return JSON.stringify(results);
+  return {
+    message: `Searched r/${subreddit} for "${query}"`,
+    result: JSON.stringify(results),
+  };
 }
 
 const description = "Search posts in a specific subreddit. Returns structured JSON with search results.";

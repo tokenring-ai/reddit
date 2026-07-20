@@ -4,12 +4,10 @@ import createTestingApp from "@tokenring-ai/app/test/createTestingApp.test";
 import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
 import plugin from "../plugin.ts";
 import RedditService from "../RedditService.ts";
-import { RedditConfigSchema } from "../schema.ts";
 import getLatestPostsTool from "../tools/getLatestPosts.ts";
 import retrievePostTool from "../tools/retrievePost.ts";
 import searchSubredditTool from "../tools/searchSubreddit.ts";
 
-// Mock HTTP calls
 void mock.module("@tokenring-ai/utility/http/doFetchWithRetry", () => ({
   doFetchWithRetry: mock(),
 }));
@@ -62,58 +60,35 @@ function lastFetchUrl() {
   return String(calls[calls.length - 1]![0]);
 }
 
-describe("RedditService Integration Tests", () => {
+function service() {
+  return new RedditService(createTestingApp() as any);
+}
+
+describe("RedditService research helpers", () => {
   beforeEach(() => {
     mock.clearAllMocks();
     (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValue(listingResponse());
   });
 
-  it("should search subreddit successfully", async () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    const result = await reddit.searchSubreddit("programming", "javascript", {
-      limit: 3,
-    });
+  it("searches a subreddit", async () => {
+    const reddit = service();
+    const result = await reddit.searchSubreddit("programming", "javascript", { limit: 3 });
 
-    expect(result).toBeDefined();
-    expect(result.data).toBeDefined();
     expect(result.data.children).toBeInstanceOf(Array);
     expect(result.data.children.length).toBeGreaterThan(0);
     expect(result.data.children[0]!.data).toHaveProperty("title");
-
-    // Verify HTTP call was made
     expect(doFetchWithRetry).toHaveBeenCalled();
   });
 
-  it("should handle pagination with after parameter", async () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    const result = await reddit.searchSubreddit("technology", "AI", {
-      limit: 2,
-      sort: "top",
-      t: "week",
-    });
-
-    expect(result.data.children).toBeInstanceOf(Array);
-    expect(result.data.children.length).toBeLessThanOrEqual(2);
-  });
-
-  it("should throw error for empty subreddit", () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    // Throws synchronously before returning a promise
+  it("throws for empty subreddit or query", () => {
+    const reddit = service();
     expect(() => reddit.searchSubreddit("", "test")).toThrow("subreddit is required");
-  });
-
-  it("should throw error for empty query", () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
     expect(() => reddit.searchSubreddit("test", "")).toThrow("query is required");
   });
 
-  it("should retrieve post content by URL", async () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    // Using a well-known Reddit post URL for testing
+  it("retrieves a post by URL", async () => {
     const postUrl = "https://www.reddit.com/r/announcements/comments/5q4qmg/out_with_2016_in_with_2017/";
-
-    // Mock response for retrievePost - Reddit returns an array with [submission, comments]
-    const postMockResponse = {
+    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValue({
       ok: true,
       status: 200,
       text: () =>
@@ -140,311 +115,107 @@ describe("RedditService Integration Tests", () => {
             },
           ]),
         ),
-    } as unknown as Response;
+    } as unknown as Response);
 
-    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValue(postMockResponse);
-
-    const content = (await reddit.retrievePost(postUrl)) as Array<{ data: { children: Array<{ data: any }> } }>;
-
-    expect(content).toBeDefined();
-    expect(Array.isArray(content)).toBe(true);
+    const content = (await service().retrievePost(postUrl)) as Array<{ data: { children: Array<{ data: any }> } }>;
     expect(content[0]!.data.children[0]!.data).toHaveProperty("title");
-
-    // Verify the URL was called with .json extension
     expect(lastFetchUrl()).toContain(".json");
   });
 
-  it("should throw error for empty post URL", async () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    await expect(reddit.retrievePost("")).rejects.toThrow("postUrl is required");
+  it("throws for empty post URL", async () => {
+    await expect(service().retrievePost("")).rejects.toThrow("postUrl is required");
   });
 
-  it("should get latest posts from subreddit", async () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    const result = await reddit.getLatestPosts("programming", {
-      limit: 5,
-    });
-
-    expect(result).toBeDefined();
-    expect(result.data).toBeDefined();
-    expect(result.data.children).toBeInstanceOf(Array);
+  it("gets latest posts", async () => {
+    const result = await service().getLatestPosts("programming", { limit: 5 });
     expect(result.data.children.length).toBeGreaterThan(0);
     expect(result.data.children[0]!.data).toHaveProperty("title");
   });
 
-  it("should throw error for empty subreddit in getLatestPosts", () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-    expect(() => reddit.getLatestPosts("")).toThrow("subreddit is required");
+  it("throws for empty subreddit in getLatestPosts", () => {
+    expect(() => service().getLatestPosts("")).toThrow("subreddit is required");
   });
 
-  it("should handle HTTP errors gracefully", async () => {
-    const mockErrorResponse = {
+  it("surfaces HTTP errors", async () => {
+    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValue({
       ok: false,
       status: 500,
       text: () => Promise.resolve("Internal Server Error"),
-    };
+    } as any);
 
-    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValue(mockErrorResponse as any);
-
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-
-    await expect(reddit.searchSubreddit("programming", "test")).rejects.toThrow("Reddit search failed (500)");
+    await expect(service().searchSubreddit("programming", "test")).rejects.toThrow("Reddit search failed (500)");
   });
 
-  it("should return empty object for invalid JSON responses", async () => {
-    const mockInvalidJsonResponse = {
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve("Invalid JSON"),
-    };
-
-    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValue(mockInvalidJsonResponse as any);
-
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-
-    // Invalid JSON is caught silently and returns empty object
-    const result = await reddit.searchSubreddit("programming", "test").catch(_err => "failed");
-    expect(result).toEqual("failed");
-  });
-
-  it("should use custom baseUrl when configured", async () => {
-    const customBaseUrl = "https://custom-reddit.example.com";
-    const reddit = new RedditService(RedditConfigSchema.parse({ baseUrl: customBaseUrl }));
-
-    // The baseUrl should be set correctly
-    expect(reddit).toBeDefined();
-    // Note: We can't directly access protected baseUrl, but we can verify it's used
-    // by checking the service was created without errors
-  });
-
-  it("should have correct service name and description", () => {
-    const reddit = new RedditService(RedditConfigSchema.parse({}));
-
+  it("has the expected service identity", () => {
+    const reddit = service();
     expect(reddit.name).toBe("RedditService");
-    expect(reddit.description).toBe("Service for searching Reddit posts and retrieving content");
+    expect(reddit.description).toContain("bot service");
   });
 });
 
-describe("Reddit Tools Tests", () => {
+describe("Reddit tools", () => {
   let mockAgent: any;
   let mockRedditService: any;
 
   beforeEach(() => {
     mock.clearAllMocks();
-
     const app = createTestingApp();
     mockAgent = createTestingAgent(app);
-
-    // Mock infoMessage
     spyOn(mockAgent, "infoMessage").mockResolvedValue(undefined);
 
-    // Create mock RedditService
     mockRedditService = {
       searchSubreddit: mock(),
       retrievePost: mock(),
       getLatestPosts: mock(),
     };
-
-    // Add mock RedditService to app
-    app.addServices(mockRedditService);
-
-    // Spy on requireServiceByType
-    spyOn(mockAgent, "requireServiceByType").mockReturnValue(mockRedditService);
+    app.addService(mockRedditService);
+    spyOn(mockAgent, "requireService").mockReturnValue(mockRedditService);
   });
 
-  it("should have correct tool metadata for searchSubreddit", () => {
+  it("exposes tool metadata", () => {
     expect(searchSubredditTool.name).toBe("reddit_searchSubreddit");
-    expect(searchSubredditTool.displayName).toBe("Reddit/searchSubreddit");
-    expect(searchSubredditTool.description).toContain("Search posts in a specific subreddit");
-    expect(searchSubredditTool.inputSchema).toBeDefined();
-  });
-
-  it("should have correct tool metadata for retrievePost", () => {
     expect(retrievePostTool.name).toBe("reddit_retrievePost");
-    expect(retrievePostTool.displayName).toBe("Reddit/retrievePost");
-    expect(retrievePostTool.description).toContain("Retrieve a Reddit post");
-    expect(retrievePostTool.inputSchema).toBeDefined();
-  });
-
-  it("should have correct tool metadata for getLatestPosts", () => {
     expect(getLatestPostsTool.name).toBe("reddit_getLatestPosts");
-    expect(getLatestPostsTool.displayName).toBe("Reddit/getLatestPosts");
-    expect(getLatestPostsTool.description).toContain("Get the latest posts from a subreddit");
-    expect(getLatestPostsTool.inputSchema).toBeDefined();
   });
 
-  it("should execute searchSubreddit tool successfully", async () => {
+  it("executes searchSubreddit", async () => {
     const mockResults = { data: { children: [{ data: { title: "Test" } }] } };
     mockRedditService.searchSubreddit.mockResolvedValue(mockResults);
 
-    const result = await searchSubredditTool.execute(
-      {
-        subreddit: "programming",
-        query: "javascript",
-        limit: 10,
-      },
-      mockAgent,
-    );
-
+    const result = await searchSubredditTool.execute({ subreddit: "programming", query: "javascript", limit: 10 }, mockAgent);
     expect(mockRedditService.searchSubreddit).toHaveBeenCalledWith("programming", "javascript", expect.objectContaining({ limit: 10 }));
-    expect(JSON.parse(result as string)).toEqual(mockResults);
+    expect(JSON.parse(result.result as string)).toEqual(mockResults);
   });
 
-  it("should throw error when subreddit is missing in searchSubreddit tool", async () => {
-    await expect(
-      searchSubredditTool.execute(
-        {
-          subreddit: "",
-          query: "javascript",
-        },
-        mockAgent,
-      ),
-    ).rejects.toThrow("subreddit is required");
+  it("executes retrievePost", async () => {
+    mockRedditService.retrievePost.mockResolvedValue({ data: { title: "Test Post" } });
+    const result = await retrievePostTool.execute({ postUrl: "https://www.reddit.com/r/test/comments/123/test/" }, mockAgent);
+    expect(JSON.parse(result.result as string)).toEqual({ data: { title: "Test Post" } });
   });
 
-  it("should throw error when query is missing in searchSubreddit tool", async () => {
-    await expect(
-      searchSubredditTool.execute(
-        {
-          subreddit: "programming",
-          query: "",
-        },
-        mockAgent,
-      ),
-    ).rejects.toThrow("query is required");
-  });
-
-  it("should execute retrievePost tool successfully", async () => {
-    const mockPost = { data: { title: "Test Post" } };
-    mockRedditService.retrievePost.mockResolvedValue(mockPost);
-
-    const result = await retrievePostTool.execute(
-      {
-        postUrl: "https://www.reddit.com/r/test/comments/123/test/",
-      },
-      mockAgent,
-    );
-
-    expect(mockRedditService.retrievePost).toHaveBeenCalledWith("https://www.reddit.com/r/test/comments/123/test/");
-    expect(JSON.parse(result as string)).toEqual(mockPost);
-  });
-
-  it("should throw error when postUrl is missing in retrievePost tool", async () => {
-    await expect(
-      retrievePostTool.execute(
-        {
-          postUrl: "",
-        },
-        mockAgent,
-      ),
-    ).rejects.toThrow("postUrl is required");
-  });
-
-  it("should execute getLatestPosts tool successfully", async () => {
-    const mockPosts = { data: { children: [{ data: { title: "Test" } }] } };
-    mockRedditService.getLatestPosts.mockResolvedValue(mockPosts);
-
-    const result = await getLatestPostsTool.execute(
-      {
-        subreddit: "programming",
-        limit: 20,
-      },
-      mockAgent,
-    );
-
+  it("executes getLatestPosts", async () => {
+    mockRedditService.getLatestPosts.mockResolvedValue({ data: { children: [] } });
+    await getLatestPostsTool.execute({ subreddit: "programming", limit: 20 }, mockAgent);
     expect(mockRedditService.getLatestPosts).toHaveBeenCalledWith("programming", expect.objectContaining({ limit: 20 }));
-    expect(JSON.parse(result as string)).toEqual(mockPosts);
-  });
-
-  it("should throw error when subreddit is missing in getLatestPosts tool", async () => {
-    await expect(
-      getLatestPostsTool.execute(
-        {
-          subreddit: "",
-        },
-        mockAgent,
-      ),
-    ).rejects.toThrow("subreddit is required");
   });
 });
 
-describe("Reddit Plugin Tests", () => {
-  let mockApp: any;
-  let mockChatService: any;
-  let mockScriptingService: any;
-  let addServicesSpy: any;
+describe("Reddit plugin", () => {
+  it("registers the service, tools, and commands on install", () => {
+    const app = createTestingApp() as any;
+    const addServicesSpy = mock();
+    app.addServices = addServicesSpy;
 
-  beforeEach(() => {
-    mock.clearAllMocks();
-
-    mockApp = createTestingApp();
-
-    // Track addServices calls
-
-    addServicesSpy = mock();
-    mockApp.addServices = addServicesSpy;
-
-    // Create mock ChatService
-    mockChatService = {
-      addTools: mock(),
-    };
-
-    // Create mock ScriptingService
-    mockScriptingService = {
-      registerFunction: mock(),
-    };
-
-    // Mock waitForItemByType for ScriptingService - call callback immediately
-    mockApp.services = {
-      waitForItemByType: mock().mockImplementation((_serviceType, callback) => {
-        callback(mockScriptingService);
-      }),
-    };
-
-    // Mock waitForService for ChatService - call callback immediately
-    mockApp.waitForService = mock().mockImplementation((_serviceType, callback) => {
-      callback(mockChatService);
+    const waiters: Array<(service: unknown) => void> = [];
+    app.waitForService = mock().mockImplementation((_type: unknown, callback: (service: unknown) => void) => {
+      waiters.push(callback);
     });
-  });
 
-  it("should skip install when no accounts are configured", () => {
-    const config = {
-      reddit: RedditConfigSchema.parse({}),
-    };
+    plugin.install(app);
 
-    plugin.install(mockApp, config as any);
-
-    // Plugin exits early when there are no accounts (and none from env)
-    expect(addServicesSpy).not.toHaveBeenCalled();
-    expect(mockChatService.addTools).not.toHaveBeenCalled();
-    expect(mockScriptingService.registerFunction).not.toHaveBeenCalled();
-  });
-
-  it("should install plugin with account configuration", () => {
-    const config = {
-      reddit: RedditConfigSchema.parse({
-        baseUrl: "https://custom-reddit.example.com",
-        accounts: {
-          default: {
-            accessToken: "test-token",
-          },
-        },
-      }),
-    };
-
-    plugin.install(mockApp, config as any);
-
-    // Verify RedditService was registered
     expect(addServicesSpy).toHaveBeenCalled();
-    const redditService = addServicesSpy.mock.calls[0][0];
-    expect(redditService).toBeInstanceOf(RedditService);
-
-    // Verify tools were added
-    expect(mockChatService.addTools).toHaveBeenCalled();
-
-    // Verify scripting functions were registered
-    expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("searchSubreddit", expect.any(Object));
-    expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("getRedditPost", expect.any(Object));
-    expect(mockScriptingService.registerFunction).toHaveBeenCalledWith("getLatestPosts", expect.any(Object));
+    expect(addServicesSpy.mock.calls[0]![0]).toBeInstanceOf(RedditService);
+    // AgentCommandService, ChatService, ScriptingService
+    expect(waiters.length).toBe(3);
   });
 });

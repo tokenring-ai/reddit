@@ -8,7 +8,7 @@ const name = "reddit_retrievePost";
 const displayName = "Reddit/retrievePost";
 
 async function execute({ postUrl }: z.output<typeof inputSchema>, agent: Agent): Promise<TokenRingToolResult> {
-  const reddit = agent.requireServiceByType(RedditService);
+  const reddit = agent.requireService(RedditService);
 
   if (!postUrl) {
     throw new ToolCallError(name, `postUrl is required`);
@@ -16,7 +16,10 @@ async function execute({ postUrl }: z.output<typeof inputSchema>, agent: Agent):
 
   agent.infoMessage(`[redditRetrievePost] Retrieving: ${postUrl}`);
   const post = await reddit.retrievePost(postUrl);
-  return JSON.stringify(post);
+  return {
+    message: `Retrieved Reddit post ${postUrl}`,
+    result: JSON.stringify(post),
+  };
 }
 
 const description = "Retrieve a Reddit post's content and comments by URL.";
