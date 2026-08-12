@@ -25,7 +25,7 @@ async function execute({ postUrl }: z.output<typeof inputSchema>, agent: Agent):
 const description = "Retrieve a Reddit post's content and comments by URL.";
 
 const inputSchema = z.object({
-  postUrl: z.string().url().describe("Reddit post URL (e.g., https://www.reddit.com/r/subreddit/comments/id/title/)"),
+  postUrl: z.url().describe("Reddit post URL (e.g., https://www.reddit.com/r/subreddit/comments/id/title/)"),
 });
 
 export default {
