@@ -40,8 +40,6 @@ export default class RedditMessagingProvider implements MessagingProvider {
   private reportedSubs = new Set<string>();
   private pendingSeq = 0;
   private pending = new Map<string, { conversationId: string; options?: SendOptions | undefined }>();
-  /** Fullnames of comments we authored, for edit and reply addressing. */
-  private ownThings = new Set<string>();
 
   constructor(
     private readonly app: TokenRingApp,
@@ -87,7 +85,6 @@ export default class RedditMessagingProvider implements MessagingProvider {
     this.handlers.clear();
     this.membershipHandlers.clear();
     this.pending.clear();
-    this.ownThings.clear();
     this.reportedSubs.clear();
   }
 
@@ -177,9 +174,7 @@ export default class RedditMessagingProvider implements MessagingProvider {
     });
 
     const response = await this.authedForm("/api/comment", body, "Reddit comment");
-    const name = extractCreatedName(response) ?? `t1_${Date.now()}`;
-    this.rememberOwn(name);
-    return name;
+    return extractCreatedName(response) ?? `t1_${Date.now()}`;
   }
 
   private async editThing(thingId: string, text: string): Promise<void> {
@@ -226,9 +221,7 @@ export default class RedditMessagingProvider implements MessagingProvider {
     const errors = response.json?.errors ?? [];
     if (errors.length > 0) throw new Error(`Reddit submit failed: ${JSON.stringify(errors)}`);
     const id = response.json?.data?.id;
-    const name = id ? (id.startsWith("t3_") ? id : `t3_${id}`) : `t3_${Date.now()}`;
-    this.rememberOwn(name);
-    return name;
+    return id ? (id.startsWith("t3_") ? id : `t3_${id}`) : `t3_${Date.now()}`;
   }
 
   private async seedInbox(): Promise<void> {
@@ -389,14 +382,6 @@ export default class RedditMessagingProvider implements MessagingProvider {
       .replace(new RegExp(`/?u/${escapeRegExp(this.username)}(?![A-Za-z0-9_-])`, "gi"), "")
       .replace(/\s{2,}/g, " ")
       .trim();
-  }
-
-  private rememberOwn(name: string): void {
-    this.ownThings.add(name);
-    if (this.ownThings.size > 2000) {
-      const oldest = this.ownThings.values().next().value;
-      if (oldest) this.ownThings.delete(oldest);
-    }
   }
 
   private async getAccessToken(): Promise<string> {

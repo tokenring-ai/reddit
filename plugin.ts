@@ -21,7 +21,7 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app) {
-    app.addService(new RedditService(app));
+    app.addService(RedditService, new RedditService(app));
 
     app.waitForService(AgentCommandService, commandService => {
       commandService.addAgentCommands(agentCommands);

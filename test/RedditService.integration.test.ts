@@ -168,7 +168,7 @@ describe("Reddit tools", () => {
       retrievePost: mock(),
       getLatestPosts: mock(),
     };
-    app.addService(mockRedditService);
+    app.addService(RedditService, mockRedditService as RedditService);
     spyOn(mockAgent, "requireService").mockReturnValue(mockRedditService);
   });
 
@@ -203,8 +203,8 @@ describe("Reddit tools", () => {
 describe("Reddit plugin", () => {
   it("registers the service, tools, and commands on install", () => {
     const app = createTestingApp() as any;
-    const addServicesSpy = mock();
-    app.addServices = addServicesSpy;
+    const addServiceSpy = mock();
+    app.addService = addServiceSpy;
 
     const waiters: Array<(service: unknown) => void> = [];
     app.waitForService = mock().mockImplementation((_type: unknown, callback: (service: unknown) => void) => {
@@ -213,8 +213,9 @@ describe("Reddit plugin", () => {
 
     plugin.install(app);
 
-    expect(addServicesSpy).toHaveBeenCalled();
-    expect(addServicesSpy.mock.calls[0]![0]).toBeInstanceOf(RedditService);
+    expect(addServiceSpy).toHaveBeenCalled();
+    expect(addServiceSpy.mock.calls[0]![0]).toBe(RedditService);
+    expect(addServiceSpy.mock.calls[0]![1]).toBeInstanceOf(RedditService);
     // AgentCommandService, ChatService, ScriptingService
     expect(waiters.length).toBe(3);
   });
