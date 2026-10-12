@@ -178,6 +178,8 @@ export const RedditJsonActionSchema = z
         data: z
           .object({
             id: z.string().optional(),
+            name: z.string().optional(),
+            url: z.string().optional(),
             things: z
               .array(
                 z

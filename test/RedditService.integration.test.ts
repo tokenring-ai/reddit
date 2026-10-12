@@ -1,12 +1,17 @@
-import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import type Agent from "@tokenring-ai/agent/Agent";
 import createTestingAgent from "@tokenring-ai/agent/test/createTestingAgent.test";
 import createTestingApp from "@tokenring-ai/app/test/createTestingApp.test";
+import { BotService } from "@tokenring-ai/bot";
+import ChatService, { type CheckToolApprovalOptions } from "@tokenring-ai/chat/ChatService";
 import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
 import plugin from "../plugin.ts";
 import RedditService from "../RedditService.ts";
+import { RedditAccountConfigSchema, type ResolvedRedditAccountConfig } from "../schema.ts";
 import getLatestPostsTool from "../tools/getLatestPosts.ts";
 import retrievePostTool from "../tools/retrievePost.ts";
 import searchSubredditTool from "../tools/searchSubreddit.ts";
+import submitPostTool from "../tools/submitPost.ts";
 
 void mock.module("@tokenring-ai/utility/http/doFetchWithRetry", () => ({
   doFetchWithRetry: mock(),
@@ -176,6 +181,7 @@ describe("Reddit tools", () => {
     expect(searchSubredditTool.name).toBe("reddit_searchSubreddit");
     expect(retrievePostTool.name).toBe("reddit_retrievePost");
     expect(getLatestPostsTool.name).toBe("reddit_getLatestPosts");
+    expect(submitPostTool.name).toBe("reddit_submitPost");
   });
 
   it("executes searchSubreddit", async () => {
@@ -218,5 +224,169 @@ describe("Reddit plugin", () => {
     expect(addServiceSpy.mock.calls[0]![1]).toBeInstanceOf(RedditService);
     // AgentCommandService, ChatService, ScriptingService
     expect(waiters.length).toBe(3);
+  });
+});
+
+describe("Reddit self posts", () => {
+  let reddit: RedditService | undefined;
+
+  afterEach(async () => {
+    await reddit?.stop();
+    reddit = undefined;
+    // Drop the URL-routed fetch stub so it cannot leak into other test files.
+    fetchMock().mockReset();
+  });
+
+  function fetchMock() {
+    return doFetchWithRetry as ReturnType<typeof mock>;
+  }
+
+  function jsonResponse(data: unknown, status = 200) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      text: () => Promise.resolve(JSON.stringify(data)),
+    } as Response;
+  }
+
+  function parsedAccount(): ResolvedRedditAccountConfig {
+    const base = RedditAccountConfigSchema.parse({ accessToken: "secret-token" });
+    const { accessToken: _accessToken, refreshToken: _refreshToken, clientSecret: _clientSecret, ...rest } = base;
+    return { ...rest, accessToken: "secret-token" };
+  }
+
+  function submitCalls() {
+    return fetchMock().mock.calls.filter(call => String(call[0]).includes("/api/submit"));
+  }
+
+  function agentFor(service: RedditService, approve: boolean) {
+    const checkToolApproval = mock(async (_request: CheckToolApprovalOptions, _agent: Agent) => approve);
+    const services = new Map<unknown, unknown>([
+      [RedditService, service],
+      [ChatService, { checkToolApproval }],
+    ]);
+    const agent = {
+      infoMessage: mock(),
+      requireService: (cls: unknown) => {
+        const serviceImpl = services.get(cls);
+        if (!serviceImpl) throw new Error("service not stubbed");
+        return serviceImpl;
+      },
+    } as unknown as Agent;
+    return { agent, checkToolApproval };
+  }
+
+  async function connect(accounts: Record<string, ResolvedRedditAccountConfig> = { reddit: parsedAccount() }) {
+    const app = createTestingApp();
+    app.addService(BotService, {
+      registerProvider() {},
+      unregisterProvider() {},
+    } as unknown as BotService);
+
+    fetchMock().mockReset();
+    fetchMock().mockImplementation(async (url: string | URL) => {
+      const href = String(url);
+      if (href.includes("/api/v1/me")) return jsonResponse({ id: "t2_abc", name: "tokenring" });
+      if (href.includes("/message/")) return jsonResponse({ data: { children: [] } });
+      if (href.includes("/api/submit")) {
+        return jsonResponse({
+          json: {
+            errors: [],
+            data: { id: "abc", name: "t3_abc", url: "https://www.reddit.com/r/programming/comments/abc/hello/" },
+          },
+        });
+      }
+      throw new Error(`unexpected Reddit request ${href}`);
+    });
+
+    reddit = new RedditService(app);
+    await reddit.reconfigure({
+      accounts,
+      publicBaseUrl: "https://www.reddit.com",
+      userAgent: "test-agent",
+    });
+    return reddit;
+  }
+
+  it("rejects empty subreddit, title, or text before any request", async () => {
+    fetchMock().mockReset();
+    const service = new RedditService(createTestingApp());
+    await expect(service.submitSelfPost(" r/ ", "Title", "Body")).rejects.toThrow(/subreddit is required/);
+    await expect(service.submitSelfPost("programming", " ", "Body")).rejects.toThrow(/title is required/);
+    await expect(service.submitSelfPost("programming", "Title", " ")).rejects.toThrow(/text is required/);
+    expect(fetchMock()).not.toHaveBeenCalled();
+  });
+
+  it("posts through the connected account's OAuth client", async () => {
+    const service = await connect();
+    const post = await service.submitSelfPost("r/programming", "Hello", "Body text");
+    expect(post).toEqual({
+      id: "abc",
+      name: "t3_abc",
+      url: "https://www.reddit.com/r/programming/comments/abc/hello/",
+    });
+    expect(submitCalls()).toHaveLength(1);
+    const [, opts] = submitCalls()[0]!;
+    expect(opts).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer secret-token" }),
+      }),
+    );
+    const params = new URLSearchParams(String((opts as { body?: unknown }).body));
+    expect(params.get("kind")).toBe("self");
+    expect(params.get("sr")).toBe("programming");
+    expect(params.get("title")).toBe("Hello");
+    expect(params.get("text")).toBe("Body text");
+  });
+
+  it("reddit_submitPost posts only after approval", async () => {
+    const service = await connect();
+    const { agent, checkToolApproval } = agentFor(service, true);
+    const result = await submitPostTool.execute({ subreddit: "r/programming", title: "Hello", text: "Body text" }, agent);
+
+    expect(checkToolApproval).toHaveBeenCalledTimes(1);
+    expect(checkToolApproval.mock.calls[0]?.[0]).toMatchObject({
+      toolName: "reddit_submitPost",
+      default: false,
+      safetyLevel: 7,
+    });
+    expect(String(checkToolApproval.mock.calls[0]![0].detailedDescription)).toContain("Body text");
+    expect(result.result).toContain("https://www.reddit.com/r/programming/comments/abc/hello/");
+    expect(submitCalls()).toHaveLength(1);
+  });
+
+  it("declined approval does not post", async () => {
+    const service = await connect();
+    const { agent, checkToolApproval } = agentFor(service, false);
+
+    await expect(submitPostTool.execute({ subreddit: "programming", title: "Hello", text: "Body text" }, agent)).rejects.toThrow(/did not approve/);
+    expect(checkToolApproval).toHaveBeenCalledTimes(1);
+    expect(submitCalls()).toHaveLength(0);
+  });
+
+  it("does not ask for approval or post when the subreddit, title, or text is empty", async () => {
+    const service = await connect();
+    const { agent, checkToolApproval } = agentFor(service, true);
+
+    await expect(submitPostTool.execute({ subreddit: " ", title: "Hello", text: "Body" }, agent)).rejects.toThrow(/subreddit is required/);
+    await expect(submitPostTool.execute({ subreddit: "programming", title: " ", text: "Body" }, agent)).rejects.toThrow(/title is required/);
+    await expect(submitPostTool.execute({ subreddit: "programming", title: "Hello", text: " \n " }, agent)).rejects.toThrow(/text is required/);
+    await expect(submitPostTool.execute({ subreddit: "programming", title: "t".repeat(301), text: "Body" }, agent)).rejects.toThrow(/300 characters/);
+    expect(checkToolApproval).not.toHaveBeenCalled();
+    expect(submitCalls()).toHaveLength(0);
+  });
+
+  it("requires an account name when more than one is connected and does not post until one is given", async () => {
+    const service = await connect({ primary: parsedAccount(), support: parsedAccount() });
+    const { agent, checkToolApproval } = agentFor(service, true);
+
+    await expect(submitPostTool.execute({ subreddit: "programming", title: "Hello", text: "Body" }, agent)).rejects.toThrow(/Multiple Reddit accounts/);
+    expect(checkToolApproval).not.toHaveBeenCalled();
+    expect(submitCalls()).toHaveLength(0);
+
+    const result = await submitPostTool.execute({ subreddit: "programming", title: "Hello", text: "Body", account: "support" }, agent);
+    expect(result.result).toContain("as support");
+    expect(submitCalls()).toHaveLength(1);
   });
 });

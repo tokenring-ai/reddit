@@ -209,4 +209,68 @@ describe("RedditMessagingProvider", () => {
     );
     await provider.stop();
   });
+
+  it("submits a self post with an explicit title and body", async () => {
+    const provider = await startProvider();
+    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValueOnce(
+      jsonResponse({
+        json: { errors: [], data: { id: "abc", name: "t3_abc", url: "https://www.reddit.com/r/programming/comments/abc/hello/" } },
+      }),
+    );
+
+    const post = await provider.submitSelfPost("r/programming", "Hello", "Body text");
+    expect(post).toEqual({
+      id: "abc",
+      name: "t3_abc",
+      url: "https://www.reddit.com/r/programming/comments/abc/hello/",
+    });
+
+    const params = new URLSearchParams(String(lastFetchCall().opts.body));
+    expect(String(lastFetchCall().url)).toContain("https://oauth.reddit.com/api/submit");
+    expect(lastFetchCall().opts).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer secret-token" }),
+      }),
+    );
+    expect(params.get("kind")).toBe("self");
+    expect(params.get("sr")).toBe("programming");
+    expect(params.get("title")).toBe("Hello");
+    expect(params.get("text")).toBe("Body text");
+    await provider.stop();
+  });
+
+  it("does not call the API when a self post is missing a title, text, or subreddit", async () => {
+    const provider = await startProvider();
+    const calls = (doFetchWithRetry as ReturnType<typeof mock>).mock.calls.length;
+
+    await expect(provider.submitSelfPost("programming", " ", "Body")).rejects.toThrow(/title is required/);
+    await expect(provider.submitSelfPost("programming", "Hello", " ")).rejects.toThrow(/text is required/);
+    await expect(provider.submitSelfPost(" r/ ", "Hello", "Body")).rejects.toThrow(/subreddit is required/);
+    expect((doFetchWithRetry as ReturnType<typeof mock>).mock.calls.length).toBe(calls);
+    await provider.stop();
+  });
+
+  it("reports Reddit submit errors and does not invent a post id", async () => {
+    const provider = await startProvider();
+    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValueOnce(
+      jsonResponse({ json: { errors: [["SUBREDDIT_NOEXIST", "that subreddit does not exist", "sr"]] } }),
+    );
+
+    await expect(provider.submitSelfPost("missing", "Hello", "Body")).rejects.toThrow(/Reddit submit failed/);
+    await provider.stop();
+  });
+
+  it("still submits a subreddit conversation as a self post", async () => {
+    const provider = await startProvider();
+    (doFetchWithRetry as ReturnType<typeof mock>).mockResolvedValueOnce(jsonResponse({ json: { errors: [], data: { id: "abc" } } }));
+
+    const id = await provider.sendMessage("sub:programming", "Hello\nBody text");
+    expect(id).toBe("t3_abc");
+    const params = new URLSearchParams(String(lastFetchCall().opts.body));
+    expect(params.get("sr")).toBe("programming");
+    expect(params.get("title")).toBe("Hello");
+    expect(params.get("text")).toBe("Body text");
+    await provider.stop();
+  });
 });

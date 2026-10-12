@@ -19,6 +19,15 @@ const POST_PREFIX = "post:";
 const SUB_PREFIX = "sub:";
 const PENDING_PREFIX = "pending:";
 
+/** Reddit rejects self-post titles longer than this. */
+const SELF_POST_TITLE_MAX = 300;
+
+export type RedditSelfPost = {
+  id: string;
+  name: string;
+  url?: string;
+};
+
 /**
  * One Reddit account, exposed as a messaging transport. Inbound traffic comes
  * from the account inbox (comment replies, username mentions, private messages).
@@ -160,7 +169,7 @@ export default class RedditMessagingProvider implements MessagingProvider {
 
     if (conversationId.startsWith(SUB_PREFIX)) {
       const subreddit = conversationId.slice(SUB_PREFIX.length);
-      return this.submitSelfPost(subreddit, text);
+      return this.submitConversationSelfPost(subreddit, text);
     }
 
     throw new Error(`Reddit messaging provider does not know how to post to conversation "${conversationId}"`);
@@ -202,17 +211,40 @@ export default class RedditMessagingProvider implements MessagingProvider {
     return extractCreatedName(response) ?? `t4_${Date.now()}`;
   }
 
-  private async submitSelfPost(subreddit: string, text: string): Promise<string> {
+  /**
+   * Publishes a self post on this connected account. Bot traffic to a subreddit
+   * still goes through sendMessage, which derives a title from the first line.
+   */
+  async submitSelfPost(subreddit: string, title: string, text: string): Promise<RedditSelfPost> {
+    const sr = normalizeSubreddit(subreddit);
+    const postTitle = title.trim();
+    const body = text.trim();
+    if (!sr) throw new Error("subreddit is required");
+    if (!postTitle) throw new Error("title is required");
+    if (!body) throw new Error("text is required");
+    if (postTitle.length > SELF_POST_TITLE_MAX) throw new Error(`title must be ${SELF_POST_TITLE_MAX} characters or fewer`);
+
+    const response = await this.postSelf(sr, postTitle, body);
+    return selfPostFromResponse(response);
+  }
+
+  private async submitConversationSelfPost(subreddit: string, text: string): Promise<string> {
     const lines = text.trim().split("\n");
-    const title = (lines[0] || "Post").slice(0, 300);
+    const title = (lines[0] || "Post").slice(0, SELF_POST_TITLE_MAX);
     const selftext = lines.length > 1 ? lines.slice(1).join("\n").trim() : text;
 
+    const response = await this.postSelf(subreddit, title, selftext);
+    const id = response.json?.data?.id;
+    return id ? (id.startsWith("t3_") ? id : `t3_${id}`) : `t3_${Date.now()}`;
+  }
+
+  private async postSelf(subreddit: string, title: string, text: string) {
     const body = new URLSearchParams({
       api_type: "json",
       sr: subreddit,
       kind: "self",
       title,
-      text: selftext,
+      text,
       resubmit: "true",
       sendreplies: "true",
     });
@@ -220,8 +252,7 @@ export default class RedditMessagingProvider implements MessagingProvider {
     const response = await this.authedForm("/api/submit", body, "Reddit submit post");
     const errors = response.json?.errors ?? [];
     if (errors.length > 0) throw new Error(`Reddit submit failed: ${JSON.stringify(errors)}`);
-    const id = response.json?.data?.id;
-    return id ? (id.startsWith("t3_") ? id : `t3_${id}`) : `t3_${Date.now()}`;
+    return response;
   }
 
   private async seedInbox(): Promise<void> {
@@ -466,6 +497,22 @@ export default class RedditMessagingProvider implements MessagingProvider {
       context,
     });
   }
+}
+
+function selfPostFromResponse(response: import("zod").output<typeof RedditJsonActionSchema>): RedditSelfPost {
+  const data = response.json?.data;
+  const raw = data?.name ?? data?.id;
+  if (!raw) throw new Error("Reddit submit failed: response did not include a post id");
+  const name = raw.startsWith("t3_") ? raw : `t3_${raw}`;
+  const url = data?.url;
+  return url ? { id: name.slice("t3_".length), name, url } : { id: name.slice("t3_".length), name };
+}
+
+function normalizeSubreddit(value: string): string {
+  return value
+    .trim()
+    .replace(/^\/?r\//i, "")
+    .trim();
 }
 
 function extractCreatedName(response: import("zod").output<typeof RedditJsonActionSchema>): string | undefined {

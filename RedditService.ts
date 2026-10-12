@@ -5,7 +5,7 @@ import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
 import KeyedRegistry from "@tokenring-ai/utility/registry/KeyedRegistry";
 import { deepEquals } from "bun";
 import type { z } from "zod";
-import RedditMessagingProvider from "./RedditMessagingProvider.ts";
+import RedditMessagingProvider, { type RedditSelfPost } from "./RedditMessagingProvider.ts";
 import { RedditListingResponseSchema, type ResolvedRedditServiceConfig } from "./schema.ts";
 
 export type RedditSearchOptions = {
@@ -24,11 +24,11 @@ export type RedditListingOptions = {
 
 /**
  * Connects configured Reddit accounts to the bot service, and exposes public
- * research helpers (search / latest / retrieve) used by chat tools.
+ * research helpers (search / latest / retrieve) plus self-post submission.
  */
 export default class RedditService implements TokenRingService {
   readonly name = "RedditService";
-  description = "Connects Reddit accounts to the bot service and provides research tools.";
+  description = "Connects Reddit accounts to the bot service and provides research and posting tools.";
 
   private providers = new KeyedRegistry<RedditMessagingProvider>();
   private options: ResolvedRedditServiceConfig = {
@@ -129,6 +129,39 @@ export default class RedditService implements TokenRingService {
       url: jsonUrl,
       context: "Reddit post retrieval",
     });
+  }
+
+  /**
+   * Picks the connected account a post should come from. A single connected
+   * account is used when the caller does not name one.
+   */
+  resolveAccountName(accountName?: string): string {
+    const names = this.providers.keysArray();
+    if (accountName) {
+      if (!this.providers.get(accountName)) {
+        throw new Error(`Reddit account "${accountName}" is not connected. Connected accounts: ${names.join(", ") || "(none)"}`);
+      }
+      return accountName;
+    }
+    if (names.length === 1) return names[0]!;
+    if (names.length === 0) throw new Error("No Reddit account is connected");
+    throw new Error(`Multiple Reddit accounts are connected (${names.join(", ")}). Pass an account name.`);
+  }
+
+  /** Publishes a self post through the named account's existing OAuth client. */
+  async submitSelfPost(subreddit: string, title: string, text: string, accountName?: string): Promise<RedditSelfPost> {
+    const sr = subreddit
+      .trim()
+      .replace(/^\/?r\//i, "")
+      .trim();
+    const postTitle = title.trim();
+    const body = text.trim();
+    if (!sr) throw new Error("subreddit is required");
+    if (!postTitle) throw new Error("title is required");
+    if (!body) throw new Error("text is required");
+
+    const account = this.resolveAccountName(accountName);
+    return this.providers.require(account).submitSelfPost(sr, postTitle, body);
   }
 
   getLatestPosts(subreddit: string, opts: RedditListingOptions = {}): Promise<z.output<typeof RedditListingResponseSchema>> {
