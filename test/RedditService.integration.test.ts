@@ -127,6 +127,30 @@ describe("RedditService research helpers", () => {
     expect(lastFetchUrl()).toContain(".json");
   });
 
+  it("only retrieves posts from reddit.com, so a URL from untrusted content cannot reach other hosts", async () => {
+    for (const url of [
+      "http://169.254.169.254/latest/meta-data",
+      "https://example.com/r/x/comments/1/t/",
+      "https://reddit.com.evil.example/r/x/",
+      "http://www.reddit.com/r/x/comments/1/t/",
+    ]) {
+      await expect(service().retrievePost(url)).rejects.toThrow(/Only https:\/\/reddit.com/);
+    }
+  });
+
+  it("refuses a reddit.com URL whose path would resolve to another host", async () => {
+    (doFetchWithRetry as ReturnType<typeof mock>).mockClear();
+    for (const url of ["https://www.reddit.com//evil.host/x", "https://www.reddit.com/\\evil.host", "https://reddit.com/\\\\evil.host/r/x"]) {
+      await expect(service().retrievePost(url)).rejects.toThrow(/Not a Reddit post path/);
+    }
+    expect(doFetchWithRetry).not.toHaveBeenCalled();
+  });
+
+  it("fetches the post from the Reddit host itself", async () => {
+    await service().retrievePost("https://old.reddit.com/r/x/comments/1/t/");
+    expect(lastFetchUrl()).toBe("https://www.reddit.com/r/x/comments/1/t.json");
+  });
+
   it("throws for empty post URL", async () => {
     await expect(service().retrievePost("")).rejects.toThrow("postUrl is required");
   });
@@ -222,8 +246,8 @@ describe("Reddit plugin", () => {
     expect(addServiceSpy).toHaveBeenCalled();
     expect(addServiceSpy.mock.calls[0]![0]).toBe(RedditService);
     expect(addServiceSpy.mock.calls[0]![1]).toBeInstanceOf(RedditService);
-    // AgentCommandService, ChatService, ScriptingService
-    expect(waiters.length).toBe(3);
+    // AgentCommandService, ChatService, RpcService, ScriptingService
+    expect(waiters.length).toBe(4);
   });
 });
 
@@ -349,7 +373,7 @@ describe("Reddit self posts", () => {
     expect(checkToolApproval.mock.calls[0]?.[0]).toMatchObject({
       toolName: "reddit_submitPost",
       default: false,
-      safetyLevel: 7,
+      safetyLevel: 8,
     });
     expect(String(checkToolApproval.mock.calls[0]![0].detailedDescription)).toContain("Body text");
     expect(result.result).toContain("https://www.reddit.com/r/programming/comments/abc/hello/");

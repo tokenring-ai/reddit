@@ -1,7 +1,10 @@
 import { Buffer } from "node:buffer";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { IncomingMessage, IncomingMessageHandler, MembershipHandler, MessagingProvider, SendOptions } from "@tokenring-ai/bot";
-import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
+import type { FetchRetryOptions } from "@tokenring-ai/utility/http/doFetchWithRetry";
+import { HTTPError, HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
+import { z } from "zod";
+import type ProviderStateFile from "./ProviderStateFile.ts";
 import type RedditService from "./RedditService.ts";
 import { RedditAccessTokenSchema, RedditJsonActionSchema, RedditListingResponseSchema, RedditMeSchema, type ResolvedRedditAccountConfig } from "./schema.ts";
 
@@ -22,6 +25,49 @@ const PENDING_PREFIX = "pending:";
 /** Reddit rejects self-post titles longer than this. */
 const SELF_POST_TITLE_MAX = 300;
 
+/** Unread inbox items fetched per poll (Reddit's maximum page size). */
+const INBOX_PAGE_SIZE = 100;
+
+/** Inbox item names remembered as handled, so none is delivered twice. */
+const MAX_REMEMBERED_ITEMS = 1000;
+
+/** Comments, posts and PMs must not be sent twice: retried on a 429 only, never on a 5xx. */
+const SEND_ONCE = { idempotent: false } as const;
+
+/** Edit errors meaning the comment is gone (or can no longer be edited), so a new one must be posted. */
+const GONE_EDIT_ERRORS = new Set(["DELETED_COMMENT", "DELETED_LINK", "NO_THING_ID", "TOO_OLD", "THREAD_LOCKED"]);
+
+/**
+ * Inbox state saved between runs: whether the inbox was ever seeded (so a restart delivers what
+ * arrived while it was down instead of marking it read unseen), and the items already handled.
+ */
+export const RedditInboxStateSchema = z.object({
+  /** The account the state belongs to; a token for a different account starts fresh. */
+  username: z.string(),
+  seeded: z.boolean().default(false),
+  handled: z.array(z.string()).default([]),
+});
+
+export type RedditInboxStateFile = ProviderStateFile<typeof RedditInboxStateSchema>;
+
+/** A Reddit API error code, from a `json.errors` entry such as `["RATELIMIT", "you are doing that too much", "ratelimit"]`. */
+function errorCodes(errors: unknown[]): string[] {
+  return errors.map(error => (Array.isArray(error) ? String(error[0]) : String(error)));
+}
+
+class RedditApiError extends Error {
+  constructor(
+    context: string,
+    readonly errors: unknown[],
+  ) {
+    super(`${context} failed: ${JSON.stringify(errors)}`);
+  }
+
+  get codes(): string[] {
+    return errorCodes(this.errors);
+  }
+}
+
 export type RedditSelfPost = {
   id: string;
   name: string;
@@ -35,6 +81,12 @@ export type RedditSelfPost = {
  */
 export default class RedditMessagingProvider implements MessagingProvider {
   readonly maxMessageLength: number;
+  /**
+   * Comments and PMs are posted once each part is final. Editing a public comment every few
+   * hundred milliseconds while a response streams costs rate limit and notifies nobody, and a PM
+   * cannot be edited at all.
+   */
+  readonly editsInPlace = false;
 
   private oauth!: HTTPRetriever;
   private accessToken: string | undefined;
@@ -49,12 +101,19 @@ export default class RedditMessagingProvider implements MessagingProvider {
   private reportedSubs = new Set<string>();
   private pendingSeq = 0;
   private pending = new Map<string, { conversationId: string; options?: SendOptions | undefined }>();
+  /** Things this account posted in this run, so a reply to one keeps its parent as the reply target. */
+  private ownThingIds = new Set<string>();
+  /** Inbox items already delivered or skipped, oldest first. */
+  private handled = new Set<string>();
+  private seeded = false;
 
   constructor(
     private readonly app: TokenRingApp,
     private readonly service: RedditService,
     readonly accountName: string,
     private readonly config: ResolvedRedditAccountConfig,
+    /** Where inbox state persists between runs; without one it lives only in memory. */
+    private readonly stateFile?: RedditInboxStateFile,
   ) {
     this.maxMessageLength = config.maxMessageLength;
     this.accessToken = config.accessToken;
@@ -74,17 +133,29 @@ export default class RedditMessagingProvider implements MessagingProvider {
 
     this.app.serviceOutput(this.service, `Reddit account ${this.accountName} connected as u/${this.username}`);
 
-    // Seed by consuming current unread without delivering, so reconnect does not
-    // replay the whole inbox.
-    await this.seedInbox();
+    // The first run ever seeds by setting aside the current unread without delivering it, so the
+    // bot does not answer an old backlog. A restart resumes instead: what arrived while it was
+    // down is still unread (or not yet handled), and is delivered.
+    this.restoreState();
+    if (!this.seeded) {
+      try {
+        await this.seedInbox();
+      } catch (error: unknown) {
+        this.app.serviceError(this.service, "Could not seed Reddit inbox (will retry):", error);
+      }
+    }
 
     this.pollTimer = setInterval(() => {
       void this.poll().catch((error: unknown) => {
-        this.app.serviceError(this.service, "Reddit poll error:", error);
+        if (!this.stopped) this.app.serviceError(this.service, "Reddit poll error:", error);
       });
     }, this.config.pollIntervalMs);
   }
 
+  /**
+   * Stops polling. A poll already in flight checks `stopped` before each item, so it delivers
+   * nothing further, and marks read only what it did handle.
+   */
   async stop(): Promise<void> {
     this.stopped = true;
     if (this.pollTimer) {
@@ -95,6 +166,11 @@ export default class RedditMessagingProvider implements MessagingProvider {
     this.membershipHandlers.clear();
     this.pending.clear();
     this.reportedSubs.clear();
+  }
+
+  /** Read through a call: `stop()` flips the flag while a poll is suspended in an await, which narrowing cannot see. */
+  private isStopped(): boolean {
+    return this.stopped;
   }
 
   onMessage(handler: IncomingMessageHandler): void {
@@ -141,7 +217,10 @@ export default class RedditMessagingProvider implements MessagingProvider {
     try {
       await this.editThing(messageId, text);
       return messageId;
-    } catch {
+    } catch (error: unknown) {
+      // Only a comment that is gone is replaced by a new one. Anything else — a rate limit above
+      // all — is thrown for the caller to retry: posting anew would leave a duplicate comment.
+      if (!isGoneEditError(error)) throw error;
       return this.post(conversationId, text, { replyToMessageId: messageId });
     }
   }
@@ -182,8 +261,13 @@ export default class RedditMessagingProvider implements MessagingProvider {
       text,
     });
 
-    const response = await this.authedForm("/api/comment", body, "Reddit comment");
-    return extractCreatedName(response) ?? `t1_${Date.now()}`;
+    const response = await this.authedForm("/api/comment", body, "Reddit comment", SEND_ONCE);
+    const errors = response.json?.errors ?? [];
+    if (errors.length > 0) throw new RedditApiError("Reddit comment", errors);
+    const name = extractCreatedName(response);
+    if (!name) throw new Error("Reddit comment failed: response did not include the new comment's id");
+    this.rememberOwnThing(name);
+    return name;
   }
 
   private async editThing(thingId: string, text: string): Promise<void> {
@@ -194,7 +278,7 @@ export default class RedditMessagingProvider implements MessagingProvider {
     });
     const response = await this.authedForm("/api/editusertext", body, "Reddit edit");
     const errors = response.json?.errors ?? [];
-    if (errors.length > 0) throw new Error(`Reddit edit failed: ${JSON.stringify(errors)}`);
+    if (errors.length > 0) throw new RedditApiError("Reddit edit", errors);
   }
 
   private async composePrivateMessage(to: string, text: string): Promise<string> {
@@ -205,10 +289,14 @@ export default class RedditMessagingProvider implements MessagingProvider {
       subject,
       text,
     });
-    const response = await this.authedForm("/api/compose", body, "Reddit compose PM");
+    const response = await this.authedForm("/api/compose", body, "Reddit compose PM", SEND_ONCE);
     const errors = response.json?.errors ?? [];
-    if (errors.length > 0) throw new Error(`Reddit compose failed: ${JSON.stringify(errors)}`);
-    return extractCreatedName(response) ?? `t4_${Date.now()}`;
+    if (errors.length > 0) throw new RedditApiError("Reddit compose", errors);
+    // /api/compose does not return the new message. The stand-in is deliberately not a `t4_`
+    // name, so nothing later tries to reply to it as one: a follow-up composes a new PM.
+    const name = extractCreatedName(response);
+    if (name) this.rememberOwnThing(name);
+    return name ?? `pm-sent-${Date.now()}`;
   }
 
   /**
@@ -249,21 +337,63 @@ export default class RedditMessagingProvider implements MessagingProvider {
       sendreplies: "true",
     });
 
-    const response = await this.authedForm("/api/submit", body, "Reddit submit post");
+    const response = await this.authedForm("/api/submit", body, "Reddit submit post", SEND_ONCE);
     const errors = response.json?.errors ?? [];
-    if (errors.length > 0) throw new Error(`Reddit submit failed: ${JSON.stringify(errors)}`);
+    if (errors.length > 0) throw new RedditApiError("Reddit submit", errors);
+    const name = response.json?.data?.name;
+    if (name) this.rememberOwnThing(name);
     return response;
   }
 
-  private async seedInbox(): Promise<void> {
+  private restoreState(): void {
+    const saved = this.stateFile?.load();
+    if (!saved || saved.username !== this.username) return;
+    this.seeded = saved.seeded;
+    this.handled = new Set(saved.handled);
+  }
+
+  private saveState(): void {
+    if (!this.stateFile) return;
     try {
-      const listing = await this.authedJson("/message/unread?limit=25&raw_json=1", { method: "GET" }, RedditListingResponseSchema, "Reddit seed inbox");
-      const names = listing.data.children.map(child => child.data.name).filter(Boolean);
-      if (names.length > 0 && this.config.markRead) {
-        await this.markRead(names);
-      }
+      this.stateFile.save({ username: this.username, seeded: this.seeded, handled: [...this.handled] });
     } catch (error: unknown) {
-      this.app.serviceError(this.service, "Could not seed Reddit inbox:", error);
+      this.app.serviceError(this.service, `Could not save Reddit inbox state to ${this.stateFile.filePath}:`, error);
+    }
+  }
+
+  /** Remembers an inbox item as handled, forgetting the oldest past the cap. */
+  private rememberHandled(name: string): void {
+    this.handled.delete(name);
+    this.handled.add(name);
+    while (this.handled.size > MAX_REMEMBERED_ITEMS) {
+      const oldest = this.handled.values().next().value;
+      if (oldest === undefined) break;
+      this.handled.delete(oldest);
+    }
+  }
+
+  private rememberOwnThing(name: string): void {
+    this.ownThingIds.add(name);
+    if (this.ownThingIds.size > MAX_REMEMBERED_ITEMS) {
+      const oldest = this.ownThingIds.values().next().value;
+      if (oldest) this.ownThingIds.delete(oldest);
+    }
+  }
+
+  private fetchUnread(context: string) {
+    return this.authedJson(`/message/unread?limit=${INBOX_PAGE_SIZE}&raw_json=1`, { method: "GET" }, RedditListingResponseSchema, context);
+  }
+
+  /** Sets the current unread aside, undelivered. Throws on failure; the next poll retries. */
+  private async seedInbox(): Promise<void> {
+    const listing = await this.fetchUnread("Reddit seed inbox");
+    if (this.isStopped()) return;
+    const names = listing.data.children.map(child => child.data.name).filter(Boolean);
+    for (const name of names) this.rememberHandled(name);
+    this.seeded = true;
+    this.saveState();
+    if (names.length > 0 && this.config.markRead) {
+      await this.markRead(names);
     }
   }
 
@@ -271,58 +401,71 @@ export default class RedditMessagingProvider implements MessagingProvider {
     if (this.stopped || this.polling) return;
     this.polling = true;
     try {
-      const listing = await this.authedJson("/message/unread?limit=25&raw_json=1", { method: "GET" }, RedditListingResponseSchema, "Reddit poll inbox");
+      if (!this.seeded) {
+        await this.seedInbox();
+        return;
+      }
+
+      const listing = await this.fetchUnread("Reddit poll inbox");
+      if (this.isStopped()) return;
 
       // Newest first from API; reverse so bots see oldest first.
       const items = [...listing.data.children].reverse();
-      const delivered: string[] = [];
+      // Everything handled this poll — delivered or skipped — is marked read, so skipped items
+      // cannot fill the unread page and stall polling. What is left unhandled stays unread.
+      const toMarkRead: string[] = [];
 
-      for (const child of items) {
-        const kind = child.kind ?? "";
-        const data = child.data;
-        if (!data.name || !data.author || data.author === this.username || data.author === "[deleted]") continue;
+      try {
+        for (const child of items) {
+          if (this.isStopped()) break;
+          const name = child.data.name;
+          if (!name) continue;
 
-        if (kind === "t4" || data.was_comment === false) {
-          await this.emitPm({
-            name: data.name,
-            author: data.author,
-            body: data.body,
-            subject: data.subject,
-            parent_id: data.parent_id,
-          });
-          delivered.push(data.name);
-          continue;
+          if (!this.handled.has(name)) {
+            await this.deliverInboxItem(child.kind ?? "", child.data);
+            this.rememberHandled(name);
+            this.saveState();
+          }
+          toMarkRead.push(name);
         }
-
-        // Comment reply or username mention (t1, or was_comment true).
-        if (kind === "t1" || data.was_comment === true) {
-          await this.emitComment({
-            name: data.name,
-            author: data.author,
-            body: data.body,
-            subreddit: data.subreddit,
-            link_id: data.link_id,
-            parent_id: data.parent_id,
-          });
-          delivered.push(data.name);
+      } finally {
+        if (toMarkRead.length > 0 && this.config.markRead) {
+          await this.markRead(toMarkRead);
         }
-      }
-
-      if (delivered.length > 0 && this.config.markRead) {
-        await this.markRead(delivered);
       }
     } finally {
       this.polling = false;
     }
   }
 
-  private async emitPm(data: {
-    name: string;
-    author: string;
-    body?: string | undefined;
-    subject?: string | undefined;
-    parent_id?: string | undefined;
-  }): Promise<void> {
+  /** Delivers one inbox item, or quietly skips one that is ours, deleted, or of a kind we do not handle. */
+  private async deliverInboxItem(kind: string, data: z.output<typeof RedditListingResponseSchema>["data"]["children"][number]["data"]): Promise<void> {
+    if (!data.author || data.author === this.username || data.author === "[deleted]") return;
+
+    if (kind === "t4" || data.was_comment === false) {
+      await this.emitPm({
+        name: data.name,
+        author: data.author,
+        body: data.body,
+        subject: data.subject,
+      });
+      return;
+    }
+
+    // Comment reply or username mention (t1, or was_comment true).
+    if (kind === "t1" || data.was_comment === true) {
+      await this.emitComment({
+        name: data.name,
+        author: data.author,
+        body: data.body,
+        subreddit: data.subreddit,
+        link_id: data.link_id,
+        parent_id: data.parent_id,
+      });
+    }
+  }
+
+  private async emitPm(data: { name: string; author: string; body?: string | undefined; subject?: string | undefined }): Promise<void> {
     const text = data.body?.trim() || data.subject?.trim() || "";
     const message: IncomingMessage = {
       conversationId: `${PM_PREFIX}${data.author}`,
@@ -330,7 +473,8 @@ export default class RedditMessagingProvider implements MessagingProvider {
       userName: `u/${data.author}`,
       text,
       messageId: data.name,
-      replyToMessageId: data.parent_id,
+      // The answer goes into this message's PM thread.
+      replyToMessageId: data.name,
       hasAttachments: false,
       direct: true,
       addressed: true,
@@ -363,7 +507,9 @@ export default class RedditMessagingProvider implements MessagingProvider {
       userName: `u/${data.author}`,
       text: this.stripOwnMention(raw),
       messageId: data.name,
-      replyToMessageId: data.parent_id ?? postId,
+      // The answer goes under this comment, not its parent.
+      replyToMessageId: data.parent_id,
+      replyTarget: data.name,
       hasAttachments: false,
       // Inbox items are already directed at this account (reply or mention).
       direct: false,
@@ -481,9 +627,10 @@ export default class RedditMessagingProvider implements MessagingProvider {
     });
   }
 
-  private async authedForm(path: string, body: URLSearchParams, context: string) {
+  private async authedForm(path: string, body: URLSearchParams, context: string, retry?: FetchRetryOptions) {
     const token = await this.getAccessToken();
     return this.oauth.fetchValidatedJson({
+      ...(retry ? { retry } : {}),
       url: path,
       opts: {
         method: "POST",
@@ -497,6 +644,12 @@ export default class RedditMessagingProvider implements MessagingProvider {
       context,
     });
   }
+}
+
+/** Whether an edit failed because the comment is gone, rather than for a reason worth retrying. */
+function isGoneEditError(error: unknown): boolean {
+  if (error instanceof RedditApiError) return error.codes.some(code => GONE_EDIT_ERRORS.has(code));
+  return error instanceof HTTPError && error.status === 404;
 }
 
 function selfPostFromResponse(response: import("zod").output<typeof RedditJsonActionSchema>): RedditSelfPost {

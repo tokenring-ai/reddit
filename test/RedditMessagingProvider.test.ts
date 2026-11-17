@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { IncomingMessage } from "@tokenring-ai/bot";
 import { doFetchWithRetry } from "@tokenring-ai/utility/http/doFetchWithRetry";
-import RedditMessagingProvider from "../RedditMessagingProvider.ts";
+import ProviderStateFile from "../ProviderStateFile.ts";
+import RedditMessagingProvider, { RedditInboxStateSchema } from "../RedditMessagingProvider.ts";
 import type RedditService from "../RedditService.ts";
 import { RedditAccountConfigSchema, type ResolvedRedditAccountConfig } from "../schema.ts";
 
@@ -272,5 +276,231 @@ describe("RedditMessagingProvider", () => {
     expect(params.get("title")).toBe("Hello");
     expect(params.get("text")).toBe("Body text");
     await provider.stop();
+  });
+});
+
+type InboxItem = { kind?: string; name: string; author?: string; body?: string; parent_id?: string; was_comment?: boolean | undefined };
+
+function inbox(items: InboxItem[]) {
+  // The API lists newest first.
+  return jsonResponse({
+    data: {
+      children: [...items].reverse().map(item => ({
+        kind: item.kind ?? "t1",
+        data: {
+          id: item.name.slice(3),
+          name: item.name,
+          author: item.author ?? "alice",
+          body: item.body ?? "u/tokenring hi",
+          subreddit: "programming",
+          link_id: "t3_post1",
+          parent_id: item.parent_id ?? "t3_post1",
+          was_comment: "was_comment" in item ? item.was_comment : true,
+        },
+      })),
+    },
+  });
+}
+
+function fetchMock() {
+  return doFetchWithRetry as ReturnType<typeof mock>;
+}
+
+function markReadCalls() {
+  return fetchMock()
+    .mock.calls.filter(call => String(call[0]).includes("/api/read_message"))
+    .map(call => new URLSearchParams(String((call[1] as { body: string }).body)).get("id"));
+}
+
+function poll(provider: RedditMessagingProvider) {
+  return (provider as unknown as { poll(): Promise<void> }).poll();
+}
+
+describe("RedditMessagingProvider sending", () => {
+  beforeEach(() => {
+    mock.clearAllMocks();
+    fetchMock().mockReset();
+  });
+
+  it("posts each response once, when final, rather than editing it while it streams", async () => {
+    const provider = await startProvider();
+    expect(provider.editsInPlace).toBe(false);
+    await provider.stop();
+  });
+
+  it("throws on a comment rejected inside a 200 response, and never invents an id", async () => {
+    const provider = await startProvider();
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { errors: [["RATELIMIT", "you are doing that too much", "ratelimit"]] } }));
+    await expect(provider.sendMessage("post:t3_1", "hello")).rejects.toThrow(/RATELIMIT/);
+
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { errors: [], data: {} } }));
+    await expect(provider.sendMessage("post:t3_1", "hello")).rejects.toThrow(/did not include/);
+    await provider.stop();
+  });
+
+  it("sends comments, posts and PMs without retrying server errors", async () => {
+    const provider = await startProvider();
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { data: { things: [{ data: { name: "t1_x" } }] } } }));
+    await provider.sendMessage("post:t3_1", "hello");
+    expect(fetchMock().mock.calls.at(-1)?.[2]).toEqual({ idempotent: false });
+
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { errors: [], data: {} } }));
+    await provider.sendMessage("pm:alice", "hello");
+    expect(String(fetchMock().mock.calls.at(-1)?.[0])).toContain("/api/compose");
+    expect(fetchMock().mock.calls.at(-1)?.[2]).toEqual({ idempotent: false });
+
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { errors: [], data: { name: "t3_p" } } }));
+    await provider.submitSelfPost("programming", "Title", "Body");
+    expect(fetchMock().mock.calls.at(-1)?.[2]).toEqual({ idempotent: false });
+    await provider.stop();
+  });
+
+  it("throws on a rate-limited edit instead of posting a duplicate comment", async () => {
+    const provider = await startProvider();
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { errors: [["RATELIMIT", "slow down", "ratelimit"]] } }));
+    await expect(provider.updateMessage("post:t3_1", "t1_mine", "edited")).rejects.toThrow(/RATELIMIT/);
+
+    fetchMock().mockResolvedValueOnce(jsonResponse({ error: 429 }, 429));
+    await expect(provider.updateMessage("post:t3_1", "t1_mine", "edited")).rejects.toThrow(/429/);
+
+    expect(fetchMock().mock.calls.some(call => String(call[0]).includes("/api/comment"))).toBe(false);
+    await provider.stop();
+  });
+
+  it("replaces a deleted comment with a new one", async () => {
+    const provider = await startProvider();
+    fetchMock()
+      .mockResolvedValueOnce(jsonResponse({ json: { errors: [["DELETED_COMMENT", "that comment has been deleted", "thing_id"]] } }))
+      .mockResolvedValueOnce(jsonResponse({ json: { data: { things: [{ data: { name: "t1_new" } }] } } }));
+    expect(await provider.updateMessage("post:t3_1", "t1_gone", "edited")).toBe("t1_new");
+    expect(String(fetchMock().mock.calls.at(-1)?.[0])).toContain("/api/comment");
+    await provider.stop();
+  });
+});
+
+describe("RedditMessagingProvider inbox polling", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    mock.clearAllMocks();
+    fetchMock().mockReset();
+    // Anything not queued below — mark-read calls — succeeds.
+    fetchMock().mockResolvedValue(jsonResponse({ json: {} }));
+    dir = mkdtempSync(path.join(tmpdir(), "reddit-inbox-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function stateFile() {
+    return new ProviderStateFile(path.join(dir, "reddit.json"), RedditInboxStateSchema);
+  }
+
+  async function start(account = parsedAccount(), file = stateFile(), seed: Response | Error | null = inbox([])) {
+    fetchMock().mockResolvedValueOnce(jsonResponse({ id: "t2_abc", name: "tokenring" }));
+    if (seed instanceof Error) fetchMock().mockRejectedValueOnce(seed);
+    else if (seed) fetchMock().mockResolvedValueOnce(seed);
+    const provider = new RedditMessagingProvider(mockApp(), mockService(), "reddit", account, file);
+    const received: IncomingMessage[] = [];
+    provider.onMessage(message => {
+      received.push(message);
+    });
+    await provider.start();
+    return { provider, received };
+  }
+
+  it("answers a comment under the comment itself, and a reply to our own comment under ours", async () => {
+    const { provider, received } = await start();
+    fetchMock().mockResolvedValueOnce(jsonResponse({ json: { data: { things: [{ data: { name: "t1_ours" } }] } } }));
+    await provider.sendMessage("post:t3_post1", "a question");
+
+    fetchMock().mockResolvedValueOnce(
+      inbox([
+        { name: "t1_a", parent_id: "t1_someone_else" },
+        { name: "t1_b", parent_id: "t1_ours" },
+        { kind: "t4", name: "t4_c", was_comment: false },
+      ]),
+    );
+    await poll(provider);
+
+    // [message, its parent, where the answer goes]: always under the message itself.
+    expect(received.map(message => [message.messageId, message.replyToMessageId, message.replyTarget ?? message.replyToMessageId])).toEqual([
+      ["t1_a", "t1_someone_else", "t1_a"],
+      ["t1_b", "t1_ours", "t1_b"],
+      ["t4_c", "t4_c", "t4_c"],
+    ]);
+    await provider.stop();
+  });
+
+  it("marks skipped items read along with delivered ones, so they cannot stall the inbox", async () => {
+    const { provider, received } = await start();
+    fetchMock().mockResolvedValueOnce(
+      inbox([
+        { name: "t1_self", author: "tokenring" },
+        { name: "t1_gone", author: "[deleted]" },
+        { kind: "t3", name: "t3_odd", was_comment: undefined },
+        { name: "t1_real" },
+      ]),
+    );
+    await poll(provider);
+
+    expect(received.map(message => message.messageId)).toEqual(["t1_real"]);
+    expect(markReadCalls().at(-1)).toBe("t1_self,t1_gone,t3_odd,t1_real");
+    await provider.stop();
+  });
+
+  it("stops mid-poll without delivering or marking read the rest", async () => {
+    const { provider, received } = await start();
+    provider.onMessage(async () => {
+      await provider.stop();
+    });
+    fetchMock().mockResolvedValueOnce(inbox([{ name: "t1_1" }, { name: "t1_2" }, { name: "t1_3" }]));
+    await poll(provider);
+
+    expect(received.map(message => message.messageId)).toEqual(["t1_1"]);
+    expect(markReadCalls().at(-1)).toBe("t1_1");
+  });
+
+  it("with markRead off, delivers each item once though it stays unread", async () => {
+    const { provider, received } = await start(parsedAccount({ markRead: false }));
+    fetchMock()
+      .mockResolvedValueOnce(inbox([{ name: "t1_1" }]))
+      .mockResolvedValueOnce(inbox([{ name: "t1_1" }, { name: "t1_2" }]));
+    await poll(provider);
+    await poll(provider);
+
+    expect(received.map(message => message.messageId)).toEqual(["t1_1", "t1_2"]);
+    expect(markReadCalls()).toEqual([]);
+    await provider.stop();
+  });
+
+  it("does not deliver until the inbox is seeded, retrying a failed seed", async () => {
+    const { provider, received } = await start(parsedAccount(), stateFile(), new Error("inbox down"));
+    fetchMock().mockResolvedValueOnce(inbox([{ name: "t1_old" }]));
+    await poll(provider);
+    expect(received).toHaveLength(0);
+    expect(markReadCalls().at(-1)).toBe("t1_old");
+
+    fetchMock().mockResolvedValueOnce(inbox([{ name: "t1_new" }]));
+    await poll(provider);
+    expect(received.map(message => message.messageId)).toEqual(["t1_new"]);
+    await provider.stop();
+  });
+
+  it("delivers what arrived while it was down after a restart, without redelivering what it handled", async () => {
+    const file = stateFile();
+    const first = await start(parsedAccount({ markRead: false }), file, inbox([{ name: "t1_old" }]));
+    fetchMock().mockResolvedValueOnce(inbox([{ name: "t1_old" }, { name: "t1_1" }]));
+    await poll(first.provider);
+    expect(first.received.map(message => message.messageId)).toEqual(["t1_1"]);
+    await first.provider.stop();
+
+    // No seed this time: the saved state says the inbox was seeded.
+    const second = await start(parsedAccount({ markRead: false }), file, null);
+    fetchMock().mockResolvedValueOnce(inbox([{ name: "t1_old" }, { name: "t1_1" }, { name: "t1_downtime" }]));
+    await poll(second.provider);
+    expect(second.received.map(message => message.messageId)).toEqual(["t1_downtime"]);
+    await second.provider.stop();
   });
 });

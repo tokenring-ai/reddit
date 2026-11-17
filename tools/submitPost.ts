@@ -1,4 +1,5 @@
 import type Agent from "@tokenring-ai/agent/Agent";
+import { permissionSlug } from "@tokenring-ai/chat";
 import ChatService from "@tokenring-ai/chat/ChatService";
 import type { TokenRingToolDefinition, TokenRingToolResult } from "@tokenring-ai/chat/schema";
 import { ToolCallError } from "@tokenring-ai/chat/util/tokenRingTool";
@@ -11,9 +12,9 @@ const displayName = "Reddit/submitPost";
 const description =
   "Publish a text (self) post to a subreddit from a connected Reddit account. The post is public and cannot be unsent, so it always goes through approval.";
 
-/** A public post cannot be unsent. */
-const SAFETY_LEVEL = 7;
-const TITLE_MAX = 300;
+/** A public post (approval standard: reaches people). */
+const SAFETY_LEVEL = 8;
+export const TITLE_MAX = 300;
 
 const inputSchema = z.object({
   subreddit: z.string().min(1).describe("Subreddit to post in (with or without the r/ prefix)"),
@@ -53,6 +54,7 @@ async function execute({ subreddit, title, text, account }: z.output<typeof inpu
       ].join("\n"),
       safetyLevel: SAFETY_LEVEL,
       default: false,
+      permission: { id: `reddit.${permissionSlug(accountName)}.post`, summary: `Post on Reddit as ${accountName}` },
     },
     agent,
   );
@@ -68,7 +70,7 @@ async function execute({ subreddit, title, text, account }: z.output<typeof inpu
   };
 }
 
-function normalizeSubreddit(value: string): string {
+export function normalizeSubreddit(value: string): string {
   return value
     .trim()
     .replace(/^\/?r\//i, "")

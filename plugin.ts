@@ -1,6 +1,7 @@
 import { AgentCommandService } from "@tokenring-ai/agent";
 import type { TokenRingPlugin } from "@tokenring-ai/app";
 import { ChatService } from "@tokenring-ai/chat";
+import { RpcService } from "@tokenring-ai/rpc";
 import { ScriptingService } from "@tokenring-ai/scripting";
 import type { ScriptingThis } from "@tokenring-ai/scripting/ScriptingService";
 import { resolveSecret } from "@tokenring-ai/secrets/SecretService";
@@ -8,6 +9,7 @@ import { z } from "zod";
 import agentCommands from "./commands.ts";
 import packageJSON from "./package.json" with { type: "json" };
 import RedditService from "./RedditService.ts";
+import redditRPC from "./rpc/reddit.ts";
 import { RedditServiceConfigSchema, type ResolvedRedditAccountConfig } from "./schema.ts";
 import tools from "./tools.ts";
 
@@ -28,6 +30,7 @@ export default {
     });
 
     app.waitForService(ChatService, chatService => chatService.addTools(tools));
+    app.waitForService(RpcService, rpcService => rpcService.registerEndpoint(redditRPC));
 
     app.waitForService(ScriptingService, (scriptingService: ScriptingService) => {
       scriptingService.registerFunction("searchSubreddit", {

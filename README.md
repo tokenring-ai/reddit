@@ -66,7 +66,7 @@ Service-level fields under `reddit`:
 | Field            | Type     | Default                                              | Description                                           |
 |------------------|----------|------------------------------------------------------|-------------------------------------------------------|
 | `accounts`       | `record` | `{}`                                                 | Reddit accounts, keyed by the service name bots address them by |
-| `publicBaseUrl`  | `string` | `https://www.reddit.com`                             | Public Reddit base URL used by research tools (search, latest posts) |
+| `publicBaseUrl`  | `string` | `https://www.reddit.com`                             | Public Reddit base URL used by research tools (search, latest posts, post retrieval) |
 | `userAgent`      | `string` | `TokenRing-One/1.0 (https://github.com/tokenring-ai/one)` | Default User-Agent for public (unauthenticated) API calls |
 
 `accessToken`, `refreshToken`, and `clientSecret` are secret references resolved by
@@ -82,7 +82,7 @@ bot:
   bots:
     helper:
       agentType: assistant
-      directMessages: anyone
+      directMessages: listed          # only the users below may DM it
       users:
         "reddit:alice": admin
       channels:
@@ -93,6 +93,12 @@ bot:
 Private messages use the bot's **direct message** policy. Public comment threads require a
 **channel** whose target is `reddit:r/{subreddit}` (room id matches `r/{subreddit}` on inbound
 messages).
+
+Answers are posted once each part is final (no streaming edits of public comments), as a reply to
+the comment or message that asked. Inbox state is saved to `<workspace>/bot-state/reddit/<account>.json`:
+the first run sets the existing unread aside, and later runs deliver what arrived while they were
+down. Items the bot skips (its own, deleted, unknown kinds) are marked read too, and with
+`markRead: false` each item is delivered once.
 
 ### Schema Metadata
 
@@ -110,7 +116,7 @@ The configuration schema carries these `.meta()` annotations for the config UI:
 - `accounts.<name>.pollIntervalMs` — `{ advanced: true, description: "How often, in milliseconds, to poll the inbox for new messages and comment replies" }`
 - `accounts.<name>.maxMessageLength` — `{ advanced: true, description: "Longest single comment or PM the account will send" }`
 - `accounts.<name>.markRead` — `{ advanced: true, description: "Mark inbox items as read after delivering them to a bot" }`
-- `publicBaseUrl` — `{ advanced: true, description: "Public Reddit base URL used by research tools (search, latest posts)" }`
+- `publicBaseUrl` — `{ advanced: true, description: "Public Reddit base URL used by research tools (search, latest posts, post retrieval)" }`
 - `userAgent` — `{ advanced: true, description: "Default User-Agent for public (unauthenticated) API calls" }`
 
 ### Addressing
@@ -170,6 +176,10 @@ The command is also available as `/reddit connect`.
 - `--name` names the account it is saved under (default `reddit`).
 - `--save` chooses the config layer the account is written to: `global` (user configuration) or
   `workspace` (workspace configuration), default `workspace`.
+- The access token, refresh token and client secret are saved in the vault (category `reddit`, keys
+  `<name>.accessToken`, `<name>.refreshToken`, `<name>.clientSecret`) and the account holds
+  `{ source: vault, ... }` references to them; the client ID is stored as-is. The vault must be unlocked.
+  Credentials typed as positionals stay in the chat history; the masked prompts don't.
 - Credentials are merged into an existing account, preserving any other fields it already has.
 - Requires an OAuth access token, or a refresh token plus client ID and client secret. Without
   either, the command throws a `CommandFailedError`.
@@ -203,6 +213,8 @@ These use the public JSON API and do not require a configured account:
 | Parameter | Type     | Description                                                               |
 |-----------|----------|---------------------------------------------------------------------------|
 | `postUrl` | `string` | Reddit post URL (e.g., `https://www.reddit.com/r/subreddit/comments/id/title/`) |
+
+Only `https://` URLs on `reddit.com` or a subdomain are accepted; other hosts are refused with an error. Only the URL's path is requested, against the configured `publicBaseUrl`.
 
 **Throws** `ToolCallError` if `postUrl` is empty.
 

@@ -5,7 +5,8 @@ import { HTTPRetriever } from "@tokenring-ai/utility/http/HTTPRetriever";
 import KeyedRegistry from "@tokenring-ai/utility/registry/KeyedRegistry";
 import { deepEquals } from "bun";
 import type { z } from "zod";
-import RedditMessagingProvider, { type RedditSelfPost } from "./RedditMessagingProvider.ts";
+import ProviderStateFile from "./ProviderStateFile.ts";
+import RedditMessagingProvider, { type RedditInboxStateFile, RedditInboxStateSchema, type RedditSelfPost } from "./RedditMessagingProvider.ts";
 import { RedditListingResponseSchema, type ResolvedRedditServiceConfig } from "./schema.ts";
 
 export type RedditSearchOptions = {
@@ -31,6 +32,12 @@ export default class RedditService implements TokenRingService {
   description = "Connects Reddit accounts to the bot service and provides research and posting tools.";
 
   private providers = new KeyedRegistry<RedditMessagingProvider>();
+  /**
+   * The account config each live provider was started with. Reconciles compare against this
+   * (not the last fully applied options), so a change that failed part-way is retried and a
+   * revert to the running config is a no-op.
+   */
+  private providerConfigs = new Map<string, ResolvedRedditServiceConfig["accounts"][string]>();
   private options: ResolvedRedditServiceConfig = {
     accounts: {},
     publicBaseUrl: "https://www.reddit.com",
@@ -61,26 +68,35 @@ export default class RedditService implements TokenRingService {
     await this.providers.reconcileAgainstAsync(options.accounts, {
       creating: async (accountName, accountConfig) => {
         this.app.serviceOutput(this, `Connecting Reddit account ${accountName}`);
-        const provider = new RedditMessagingProvider(this.app, this, accountName, accountConfig);
+        const provider = new RedditMessagingProvider(this.app, this, accountName, accountConfig, this.inboxStateFile(accountName));
         await provider.start();
         botService!.registerProvider(accountName, provider);
+        this.providerConfigs.set(accountName, accountConfig);
         return provider;
       },
       deleting: async (accountName, provider) => {
         this.app.serviceOutput(this, `Stopping Reddit account ${accountName}`);
         botService?.unregisterProvider(accountName);
+        this.providerConfigs.delete(accountName);
         await provider.stop();
       },
       updating: async (accountName, provider, accountConfig) => {
-        if (deepEquals(this.options.accounts[accountName], accountConfig, true)) return provider;
+        if (deepEquals(this.providerConfigs.get(accountName), accountConfig, true)) return provider;
 
+        // Start the replacement first: if it fails, the current provider stays registered and
+        // running, and the error propagates to the caller.
         this.app.serviceOutput(this, `Reconnecting Reddit account ${accountName}`);
-        botService?.unregisterProvider(accountName);
-        await provider.stop();
-
-        const next = new RedditMessagingProvider(this.app, this, accountName, accountConfig);
+        const next = new RedditMessagingProvider(this.app, this, accountName, accountConfig, this.inboxStateFile(accountName));
         await next.start();
+
+        botService!.unregisterProvider(accountName);
         botService!.registerProvider(accountName, next);
+        this.providerConfigs.set(accountName, accountConfig);
+        try {
+          await provider.stop();
+        } catch (error: unknown) {
+          this.app.serviceError(this, `Error stopping replaced Reddit account ${accountName}:`, error);
+        }
         return next;
       },
     });
@@ -92,8 +108,9 @@ export default class RedditService implements TokenRingService {
     const botService = this.app.getService(BotService);
     for (const [accountName, provider] of this.providers.entriesArray()) {
       botService?.unregisterProvider(accountName);
-      await provider.stop();
       this.providers.unregister(accountName);
+      this.providerConfigs.delete(accountName);
+      await provider.stop();
     }
   }
 
@@ -124,11 +141,39 @@ export default class RedditService implements TokenRingService {
 
   async retrievePost(postUrl: string) {
     if (!postUrl) throw new Error("postUrl is required");
-    const jsonUrl = postUrl.endsWith(".json") ? postUrl : `${postUrl}.json`;
+    // Only Reddit itself: the URL can come from content the model read, and the retriever would
+    // otherwise fetch any host the server can reach and hand back its response.
+    let parsed: URL;
+    try {
+      parsed = new URL(postUrl);
+    } catch {
+      throw new Error(`Not a URL: ${postUrl}`);
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (parsed.protocol !== "https:" || !(host === "reddit.com" || host.endsWith(".reddit.com"))) {
+      throw new Error(`Only https://reddit.com post URLs can be retrieved, not ${parsed.origin}`);
+    }
+    // The path alone, resolved against the Reddit API base. A path starting `//` (which is also
+    // what `/\host` parses to) would resolve as a protocol-relative URL to another host.
+    const pathname = parsed.pathname;
+    if (pathname.startsWith("//") || pathname.includes("\\") || /^\/*[a-z][a-z0-9+.-]*:/i.test(pathname)) {
+      throw new Error(`Not a Reddit post path: ${pathname}`);
+    }
+    const jsonPath = pathname.endsWith(".json") ? pathname : `${pathname.replace(/\/$/, "")}.json`;
+    const target = new URL(jsonPath, this.options.publicBaseUrl);
+    const targetHost = target.hostname.toLowerCase();
+    if (target.protocol !== "https:" || !(targetHost === "reddit.com" || targetHost.endsWith(".reddit.com"))) {
+      throw new Error(`Only https://reddit.com post URLs can be retrieved, not ${target.origin}`);
+    }
     return this.publicRetriever.fetchJson({
-      url: jsonUrl,
+      url: target,
       context: "Reddit post retrieval",
     });
+  }
+
+  /** Where an account's inbox state is kept between runs. */
+  private inboxStateFile(accountName: string): RedditInboxStateFile {
+    return new ProviderStateFile(this.app.getWorkspaceResolvedPath(`bot-state/reddit/${encodeURIComponent(accountName)}.json`), RedditInboxStateSchema);
   }
 
   /**
